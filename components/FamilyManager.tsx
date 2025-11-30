@@ -58,8 +58,12 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => setSearchLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
-        (err) => console.error("Geo error", err)
+        (position) => {
+            setSearchLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+            console.log("Location acquired for preferences");
+        },
+        (err) => console.error("Geo error", err),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
   }, []);
@@ -126,6 +130,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const handlePlaceSearch = async () => {
     if (!placeQuery.trim()) return;
     setIsSearching(true);
+    setSearchResults([]);
     try {
       const results = await searchPlace(placeQuery, searchLocation);
       setSearchResults(results);
@@ -363,7 +368,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                             onChange={e => setPlaceQuery(e.target.value)}
                                             onKeyDown={e => e.key === 'Enter' && handlePlaceSearch()}
                                             className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 transition-all"
-                                            placeholder="Search restaurant to add..."
+                                            placeholder="Search restaurant (add city if needed)..."
                                         />
                                         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                                     </div>
@@ -399,6 +404,11 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                                 <Plus size={16} className="text-emerald-500"/>
                                             </button>
                                         ))}
+                                    </div>
+                                )}
+                                {isSearching && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl p-4 text-center text-xs text-gray-400 shadow-xl z-20">
+                                        Searching near you...
                                     </div>
                                 )}
                             </div>

@@ -2,19 +2,29 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
 
-// Safe access to environment variable to prevent runtime crashes if build fails to replace it
-const getApiKey = () => {
-  try {
-    // @ts-ignore
-    return import.meta.env.VITE_API_KEY || "";
-  } catch (e) {
-    console.warn("Failed to access VITE_API_KEY");
-    return "";
-  }
-};
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const apiKey = getApiKey();
-const ai = new GoogleGenAI({ apiKey });
+// --- JSON Parsing Utility ---
+const cleanAndParseJSON = (text: string): any => {
+  try {
+    // 1. Try cleaning markdown code blocks
+    let clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    // 2. If that fails, try regex extraction for arrays or objects
+    try {
+      const arrayMatch = text.match(/\[[\s\S]*\]/);
+      if (arrayMatch) return JSON.parse(arrayMatch[0]);
+      
+      const objectMatch = text.match(/\{[\s\S]*\}/);
+      if (objectMatch) return JSON.parse(objectMatch[0]);
+    } catch (e2) {
+      console.error("JSON Parsing failed completely", text);
+      throw new Error("Invalid JSON response from AI");
+    }
+  }
+  throw new Error("No JSON found in response");
+};
 
 // --- Helper to search for a specific place ---
 export const searchPlace = async (
@@ -32,7 +42,9 @@ export const searchPlace = async (
     Return a list of up to 5 matches.
     
     CRITICAL OUTPUT FORMAT:
-    Return ONLY a valid JSON array of objects. Do not wrap in markdown code blocks.
+    Return ONLY a valid JSON array of objects.
+    Do not include any conversational text.
+    
     Each object must have these keys:
     - name (string)
     - cuisine (string)
@@ -47,23 +59,13 @@ export const searchPlace = async (
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
-        // responseSchema is not supported with tools in some versions, so we parse manually
       },
     });
 
     const text = response.text;
     if (!text) return [];
 
-    // Sanitize and parse JSON
-    const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    let rawPlaces = [];
-    try {
-        rawPlaces = JSON.parse(cleanText);
-    } catch (e) {
-        // Fallback if AI output valid text but weird formatting
-        console.warn("JSON parse failed, returning empty", e);
-        return [];
-    }
+    const rawPlaces = cleanAndParseJSON(text);
     
     // Add grounding
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
@@ -207,12 +209,11 @@ export const findBestPlace = async (
 
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     let cleanText = response.text || "";
-    cleanText = cleanText.replace(/```json/g, "").replace(/```/g, "").trim();
     
     let parsedData: { recommended: any; alternatives: any[] };
     
     try {
-       parsedData = JSON.parse(cleanText);
+       parsedData = cleanAndParseJSON(cleanText);
     } catch (e) {
       parsedData = {
           recommended: { name: "Search Result", cuisine: cuisine, source: "search", address: "See map" },
@@ -277,11 +278,10 @@ export const getRouletteOptions = async (
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
         let cleanText = response.text || "";
-        cleanText = cleanText.replace(/```json/g, "").replace(/```/g, "").trim();
         
         let places: any[] = [];
         try {
-           const parsed: any = JSON.parse(cleanText);
+           const parsed: any = cleanAndParseJSON(cleanText);
            if(Array.isArray(parsed)) {
                places = parsed;
            } else if (parsed && typeof parsed === 'object') {

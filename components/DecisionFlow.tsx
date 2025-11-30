@@ -50,8 +50,12 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
-        (err) => console.error("Geo error", err)
+        (position) => {
+             setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+             console.log("Location acquired for decision flow");
+        },
+        (err) => console.error("Geo error", err),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
   }, []);

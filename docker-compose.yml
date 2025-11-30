@@ -6,8 +6,7 @@ services:
     build:
       context: .
       args:
-        # We Map the local API_KEY to the VITE_API_KEY arg expected by Dockerfile
-        VITE_API_KEY: ${API_KEY}
+        API_KEY: ${API_KEY}
     restart: unless-stopped
     networks:
       - saltbox
