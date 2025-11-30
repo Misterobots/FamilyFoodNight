@@ -1,0 +1,41 @@
+
+services:
+  fameats:
+    container_name: fameats
+    hostname: fameats
+    build:
+      context: .
+      args:
+        API_KEY: ${API_KEY}
+    restart: unless-stopped
+    networks:
+      - saltbox
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - DB_PATH=/data/families.db
+    labels:
+      - "com.github.saltbox.saltbox_managed=true"
+      - "diun.enable=true"
+      - "autoheal=true"
+      - "autoheal.stop.timeout=10"
+      - "traefik.enable=true"
+      
+      # HTTP Router
+      - "traefik.http.routers.fameats-http.entrypoints=web"
+      - "traefik.http.routers.fameats-http.rule=Host(`fameats.shivelymedia.com`)"
+      - "traefik.http.routers.fameats-http.middlewares=globalHeaders@file,redirect-to-https@docker"
+      
+      # HTTPS Router
+      - "traefik.http.routers.fameats.entrypoints=websecure"
+      - "traefik.http.routers.fameats.rule=Host(`fameats.shivelymedia.com`)"
+      - "traefik.http.routers.fameats.tls.certresolver=cfdns"
+      - "traefik.http.routers.fameats.tls.options=securetls@file"
+      - "traefik.http.routers.fameats.middlewares=globalHeaders@file,secureHeaders@file"
+      
+      - "traefik.http.services.fameats.loadbalancer.server.port=3000"
+
+networks:
+  saltbox:
+    external: true

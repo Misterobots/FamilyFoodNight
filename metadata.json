@@ -1,0 +1,7 @@
+{
+  "name": "FamEats",
+  "description": "A family dining decision app that aggregates preferences, manages voting, and uses AI to find the perfect meal spot.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
