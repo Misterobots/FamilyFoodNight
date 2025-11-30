@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
+  // We still load env for other purposes if needed, but we rely on VITE_ prefix for the app
   const env = loadEnv(mode, (process as any).cwd(), '');
   return {
     plugins: [
@@ -17,7 +18,7 @@ export default defineConfig(({ mode }) => {
           description: 'Family Dining Decision App',
           theme_color: '#ffffff',
           background_color: '#f8fafc',
-          display: 'standalone', // Key for native app feel
+          display: 'standalone', 
           orientation: 'portrait-primary',
           start_url: '/',
           icons: [
@@ -55,9 +56,7 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
-    define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
-    },
+    // Removed the explicit define block to prevent overriding import.meta.env
     build: {
       outDir: 'dist',
       sourcemap: false

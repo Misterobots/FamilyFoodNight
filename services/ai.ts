@@ -2,7 +2,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe access to environment variable to prevent runtime crashes if build fails to replace it
+const getApiKey = () => {
+  try {
+    // @ts-ignore
+    return import.meta.env.VITE_API_KEY || "";
+  } catch (e) {
+    console.warn("Failed to access VITE_API_KEY");
+    return "";
+  }
+};
+
+const apiKey = getApiKey();
+const ai = new GoogleGenAI({ apiKey });
 
 // --- Helper to search for a specific place ---
 export const searchPlace = async (
@@ -44,7 +56,14 @@ export const searchPlace = async (
 
     // Sanitize and parse JSON
     const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const rawPlaces = JSON.parse(cleanText);
+    let rawPlaces = [];
+    try {
+        rawPlaces = JSON.parse(cleanText);
+    } catch (e) {
+        // Fallback if AI output valid text but weird formatting
+        console.warn("JSON parse failed, returning empty", e);
+        return [];
+    }
     
     // Add grounding
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
