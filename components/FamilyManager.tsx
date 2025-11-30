@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { FamilyMember, Restaurant, FamilySession } from '../types';
-import { Plus, Trash2, Share2, Copy, Check, Smartphone, X, UserPlus, Users, Edit2, Save, MapPin, Search, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Share2, Copy, Check, Smartphone, X, UserPlus, Users, Edit2, Save, MapPin, Search, Loader2, AlertCircle } from 'lucide-react';
 import { exportSessionString } from '../services/storage';
 import { searchPlace } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -51,6 +51,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Restaurant[]>([]);
   const [searchLocation, setSearchLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const [copied, setCopied] = useState(false);
   const [exportString, setExportString] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
     setFormFavorites([]);
     setPlaceQuery('');
     setSearchResults([]);
+    setHasSearched(false);
     setIsAdding(false);
     setEditingId(null);
   };
@@ -130,6 +132,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const handlePlaceSearch = async () => {
     if (!placeQuery.trim()) return;
     setIsSearching(true);
+    setHasSearched(true);
     setSearchResults([]);
     try {
       const results = await searchPlace(placeQuery, searchLocation);
@@ -147,6 +150,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
     }
     setPlaceQuery('');
     setSearchResults([]);
+    setHasSearched(false);
   };
 
   const removeFavorite = (index: number) => {
@@ -404,6 +408,16 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                                 <Plus size={16} className="text-emerald-500"/>
                                             </button>
                                         ))}
+                                    </div>
+                                )}
+                                {hasSearched && !isSearching && searchResults.length === 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl p-4 shadow-xl z-20 border border-red-100">
+                                         <div className="flex items-center gap-2 text-red-500 font-bold text-xs mb-1">
+                                             <AlertCircle size={14} /> No results found
+                                         </div>
+                                         <p className="text-[10px] text-gray-500">
+                                             Try adding the city name (e.g., "Joe's Pizza Chicago").
+                                         </p>
                                     </div>
                                 )}
                                 {isSearching && (

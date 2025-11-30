@@ -6,24 +6,32 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // --- JSON Parsing Utility ---
 const cleanAndParseJSON = (text: string): any => {
+  if (!text) return [];
   try {
-    // 1. Try cleaning markdown code blocks
-    let clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(clean);
+    // 1. Try parsing directly
+    return JSON.parse(text);
   } catch (e) {
-    // 2. If that fails, try regex extraction for arrays or objects
+    // 2. Try cleaning markdown code blocks
     try {
-      const arrayMatch = text.match(/\[[\s\S]*\]/);
-      if (arrayMatch) return JSON.parse(arrayMatch[0]);
-      
-      const objectMatch = text.match(/\{[\s\S]*\}/);
-      if (objectMatch) return JSON.parse(objectMatch[0]);
+      let clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      return JSON.parse(clean);
     } catch (e2) {
-      console.error("JSON Parsing failed completely", text);
-      throw new Error("Invalid JSON response from AI");
+      // 3. Try regex extraction for arrays
+      try {
+        const arrayMatch = text.match(/\[[\s\S]*\]/);
+        if (arrayMatch) return JSON.parse(arrayMatch[0]);
+        
+        // 4. Try regex for objects wrapped in array
+        const objectMatch = text.match(/\{[\s\S]*\}/);
+        if (objectMatch) return [JSON.parse(objectMatch[0])];
+      } catch (e3) {
+        console.error("JSON Parsing failed completely", text);
+        // Don't throw, just return empty to prevent UI crash
+        return [];
+      }
     }
   }
-  throw new Error("No JSON found in response");
+  return [];
 };
 
 // --- Helper to search for a specific place ---
@@ -31,7 +39,7 @@ export const searchPlace = async (
   query: string,
   location: Coordinates | null
 ): Promise<Restaurant[]> => {
-  let locationStr = "the user's current location";
+  let locationStr = "globally (or near user's IP)";
   
   if (location) {
     locationStr = `lat: ${location.latitude}, long: ${location.longitude}`;
@@ -41,16 +49,20 @@ export const searchPlace = async (
     Using Google Search, find restaurants matching the name "${query}" near ${locationStr}.
     Return a list of up to 5 matches.
     
-    CRITICAL OUTPUT FORMAT:
-    Return ONLY a valid JSON array of objects.
-    Do not include any conversational text.
+    Instructions:
+    1. If the location is provided coordinates, search strictly near there.
+    2. If the location is NOT provided, try to infer it from the query (e.g. "Joe's Pizza Chicago").
+    3. If no location context exists, return popular matches globally or return an empty list.
+    4. CRITICAL: Output MUST be a valid JSON array. No conversational text.
     
-    Each object must have these keys:
-    - name (string)
-    - cuisine (string)
-    - flavorProfile (array of strings, e.g. ["Spicy", "Umami", "Rich"])
-    - rating (number)
-    - address (string)
+    JSON Structure per item:
+    {
+      "name": "string",
+      "cuisine": "string",
+      "flavorProfile": ["string", "string"],
+      "rating": 4.5,
+      "address": "string"
+    }
   `;
 
   try {
@@ -63,6 +75,8 @@ export const searchPlace = async (
     });
 
     const text = response.text;
+    console.log("Search Place Raw Response:", text); // Debug log
+    
     if (!text) return [];
 
     const rawPlaces = cleanAndParseJSON(text);
@@ -81,7 +95,7 @@ export const searchPlace = async (
 
     return rawPlaces.map((p: any) => ({
       name: p.name,
-      cuisine: p.cuisine,
+      cuisine: p.cuisine || "Unknown",
       flavorProfile: Array.isArray(p.flavorProfile) ? p.flavorProfile : [],
       rating: p.rating,
       address: p.address,
@@ -214,11 +228,26 @@ export const findBestPlace = async (
     
     try {
        parsedData = cleanAndParseJSON(cleanText);
+       // Handle cases where parsing returns array instead of object
+       if (Array.isArray(parsedData)) {
+         parsedData = {
+           recommended: parsedData[0],
+           alternatives: parsedData.slice(1)
+         }
+       }
     } catch (e) {
       parsedData = {
           recommended: { name: "Search Result", cuisine: cuisine, source: "search", address: "See map" },
           alternatives: []
       };
+    }
+
+    // Fallback if parsedData is empty/malformed
+    if (!parsedData.recommended) {
+        parsedData = {
+            recommended: { name: "Search Failed", cuisine: cuisine, source: "search", address: "See map" },
+            alternatives: []
+        };
     }
 
     const attachUri = (placeName: string) => {
@@ -230,13 +259,13 @@ export const findBestPlace = async (
     };
 
     const processPlace = (p: any): Restaurant => ({
-        name: p.name,
-        cuisine: p.cuisine || cuisine,
-        flavorProfile: Array.isArray(p.flavorProfile) ? p.flavorProfile : [],
-        rating: p.rating,
-        address: p.address,
-        source: p.source || 'search',
-        googleMapsUri: attachUri(p.name)
+        name: p?.name || "Unknown Place",
+        cuisine: p?.cuisine || cuisine,
+        flavorProfile: Array.isArray(p?.flavorProfile) ? p.flavorProfile : [],
+        rating: p?.rating,
+        address: p?.address,
+        source: p?.source || 'search',
+        googleMapsUri: attachUri(p?.name || "place")
     });
 
     return {
