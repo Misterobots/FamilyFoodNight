@@ -4,7 +4,6 @@ import { encryptData, decryptData, generateFamilyCode } from './crypto';
 
 const STORAGE_PREFIX = 'fameats_encrypted_';
 const SERVER_URL_KEY = 'fameats_server_url';
-const CREDENTIALS_KEY = 'fameats_auth_creds';
 const CHANNEL_NAME = 'fameats_sync_channel';
 
 // Local Sync Channel (for when running without server or multiple tabs)
@@ -27,26 +26,6 @@ export const getServerUrl = (): string | null => {
 };
 
 // --- Persistence Logic ---
-
-const saveCredentials = (familyId: string, familyKey: string) => {
-    try {
-        localStorage.setItem(CREDENTIALS_KEY, JSON.stringify({ familyId, familyKey }));
-    } catch (e) {
-        console.error("Failed to save credentials", e);
-    }
-};
-
-export const restoreLastSession = async (): Promise<FamilySession | null> => {
-    const stored = localStorage.getItem(CREDENTIALS_KEY);
-    if (!stored) return null;
-    try {
-        const { familyId, familyKey } = JSON.parse(stored);
-        return await getStoredSession(familyId, familyKey);
-    } catch (e) {
-        console.error("Failed to restore session", e);
-        return null;
-    }
-};
 
 export const getStoredSession = async (familyId: string, key: string): Promise<FamilySession | null> => {
   const serverUrl = getServerUrl();
@@ -141,7 +120,6 @@ export const createNewFamily = async (familyName: string, userName: string): Pro
   };
 
   await saveSession(session);
-  saveCredentials(familyId, familyKey);
   return session;
 };
 
@@ -177,7 +155,6 @@ export const joinFamily = async (familyId: string, familyKey: string, userName: 
   }
 
   await saveSession(session);
-  saveCredentials(familyId, familyKey);
   return session;
 };
 
@@ -213,7 +190,6 @@ export const importSessionString = async (importString: string): Promise<FamilyS
         
         // Save
         localStorage.setItem(`${STORAGE_PREFIX}${familyId}`, encryptedBlob);
-        saveCredentials(familyId, familyKey);
         
         // Force a save to ensure it syncs up to the server if we just configured it
         if (serverUrl) {
@@ -283,5 +259,5 @@ export const subscribeToSync = (
 };
 
 export const logout = () => {
-    localStorage.removeItem(CREDENTIALS_KEY);
+    // Optional cleanup
 };

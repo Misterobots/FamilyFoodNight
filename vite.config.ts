@@ -5,11 +5,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   // Load env from file (.env) or system (Docker ENV)
-  const env = loadEnv(mode, (process as any).cwd(), '');
+  const env = loadEnv(mode, process.cwd(), '');
   
   // Prioritize Docker Env Var (VITE_API_KEY) then .env file
-  // Fallback to API_KEY for convenience
-  const apiKey = process.env.VITE_API_KEY || env.VITE_API_KEY || process.env.API_KEY || env.API_KEY || '';
+  const apiKey = process.env.VITE_API_KEY || env.VITE_API_KEY || '';
   
   console.log(`[Vite Build] Injection Key present: ${!!apiKey}`);
 
@@ -18,15 +17,6 @@ export default defineConfig(({ mode }) => {
       // Create a global constant that contains the API key string.
       // This is safer than relying on import.meta.env in Docker environments.
       __API_KEY__: JSON.stringify(apiKey),
-    },
-    server: {
-      proxy: {
-        '/api': {
-          target: 'http://localhost:3000',
-          changeOrigin: true,
-          secure: false,
-        }
-      }
     },
     plugins: [
       react(),

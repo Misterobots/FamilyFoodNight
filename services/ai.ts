@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
 import { getServerUrl } from "./storage";
 
@@ -34,10 +34,7 @@ const fetchPlacesFromBackend = async (
 
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'x-fameats-api-key': API_KEY // Pass the client key as fallback
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 query,
                 latitude: location?.latitude,
@@ -94,56 +91,32 @@ export const getCuisineConsensus = async (
       ]};
   }
 
-  // Optimized member data to save input tokens
   const memberData = members.map((m) => ({
       n: m.name,
       no: m.dietaryRestrictions || [],
       like: m.cuisinePreferences || [],
-      love: (m.flavorPreferences || []).slice(0, 2)
+      love: (m.flavorPreferences || []).slice(0, 2), 
+      fav: (m.favorites || []).slice(0, 3).map(f => f.cuisine)
   }));
 
-  // Concise prompt relying on Schema for structure
-  const prompt = `Analyze preferences: ${JSON.stringify(memberData)}. Return 3 distinct cuisines.`;
+  const prompt = `
+    Analyze: ${JSON.stringify(memberData)}
+    Return 3 cuisine options that maximize 'like'/'love' and avoid 'no'.
+    Format: JSON { "options": [{"cuisine": "...", "reasoning": "..."}] }
+  `;
 
   try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
-        config: { 
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    options: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                cuisine: { type: Type.STRING },
-                                reasoning: { type: Type.STRING }
-                            },
-                            required: ["cuisine", "reasoning"]
-                        }
-                    }
-                }
-            },
-            maxOutputTokens: 200, // Strict limit for efficiency
-            thinkingConfig: { thinkingBudget: 0 } // Disable thinking to save tokens
-        },
+        config: { responseMimeType: "application/json" },
       });
 
       const text = response.text;
       if (!text) throw new Error("No response");
       return JSON.parse(text);
-  } catch (e: any) {
-      // Improve error logging for the specific 403 case
-      if (e.toString().includes("403") || e.toString().includes("API_KEY_SERVICE_BLOCKED")) {
-        console.error("🚨 CONFIG ERROR: 'Generative Language API' is not enabled in your Google Cloud Console.");
-        console.error("👉 Enable it here: https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com");
-      } else {
-        console.error("AI Consensus Error", e);
-      }
-
+  } catch (e) {
+      console.error("AI Consensus Error", e);
       return { options: [
           { cuisine: "Pizza", reasoning: "Everyone loves pizza." },
           { cuisine: "Burgers", reasoning: "Safe bet." },

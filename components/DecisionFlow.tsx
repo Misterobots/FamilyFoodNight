@@ -192,15 +192,12 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                                 </motion.button>
                             ))}
                         </div>
-                        <div className="mt-auto flex gap-4">
-                            <button onClick={onCancel} className="px-6 py-5 font-bold text-gray-400 hover:bg-gray-100 rounded-[1.5rem] transition-colors flex items-center gap-2" aria-label="Cancel">
-                                <ArrowLeft size={20} /> Back
-                            </button>
+                        <div className="mt-auto">
                             <motion.button 
                                 whileTap={{ scale: 0.95 }}
                                 disabled={selectedMemberIds.size === 0} 
                                 onClick={() => setStep('select-mode')} 
-                                className="flex-1 bg-gray-900 text-white py-5 rounded-[1.5rem] font-bold text-xl hover:bg-black transition-colors flex items-center justify-center gap-3 shadow-xl hover:shadow-2xl"
+                                className="w-full bg-gray-900 text-white py-5 rounded-[1.5rem] font-bold text-xl hover:bg-black transition-colors flex items-center justify-center gap-3 shadow-xl hover:shadow-2xl"
                             >
                                 Continue <ArrowRight size={22} />
                             </motion.button>
@@ -297,11 +294,8 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                                 );
                             })}
                         </div>
-                        <div className="mt-4 pt-4 flex gap-4">
-                            <button onClick={() => setStep('select-mode')} className="px-4 py-4 font-bold text-gray-400 hover:bg-gray-100 rounded-2xl transition-colors" aria-label="Back">
-                                <ArrowLeft size={24} />
-                            </button>
-                            <motion.button whileTap={{ scale: 0.95 }} onClick={finishVoting} className="flex-1 bg-gradient-to-r from-orange-600 to-rose-600 text-white py-5 rounded-[1.5rem] font-bold text-xl shadow-xl shadow-orange-200 hover:shadow-orange-300">Finish Voting</motion.button>
+                        <div className="mt-4 pt-4">
+                            <motion.button whileTap={{ scale: 0.95 }} onClick={finishVoting} className="w-full bg-gradient-to-r from-orange-600 to-rose-600 text-white py-5 rounded-[1.5rem] font-bold text-xl shadow-xl shadow-orange-200 hover:shadow-orange-300">Finish Voting</motion.button>
                         </div>
                      </motion.div>
                 )}
