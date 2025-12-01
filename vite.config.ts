@@ -7,16 +7,16 @@ export default defineConfig(({ mode }) => {
   // Load env from file (.env) or system (Docker ENV)
   const env = loadEnv(mode, process.cwd(), '');
   
-  // 1. Try to get the key from Docker Build Args (process.env)
-  // 2. Fallback to .env file (env)
-  const apiKey = process.env.VITE_API_KEY || env.VITE_API_KEY || process.env.API_KEY || env.API_KEY || '';
-
-  console.log(`[Vite Build] API Key injected: ${apiKey ? 'Yes (Starts with ' + apiKey.substring(0,4) + '...)' : 'MISSING'}`);
+  // Prioritize Docker Env Var (VITE_API_KEY) then .env file
+  const apiKey = process.env.VITE_API_KEY || env.VITE_API_KEY || '';
+  
+  console.log(`[Vite Build] Injection Key present: ${!!apiKey}`);
 
   return {
     define: {
-      // Force replacement of this string in the client code
-      'import.meta.env.VITE_API_KEY': JSON.stringify(apiKey),
+      // Create a global constant that contains the API key string.
+      // This is safer than relying on import.meta.env in Docker environments.
+      __API_KEY__: JSON.stringify(apiKey),
     },
     plugins: [
       react(),

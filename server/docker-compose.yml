@@ -17,6 +17,7 @@ services:
       # Runtime variables for Node Backend
       - DATA_DIR=/data
       - DB_PATH=/data/families.db
+      # CRITICAL: This enables the backend proxy to call Google Maps
       - API_KEY=${API_KEY}
     labels:
       - "com.github.saltbox.saltbox_managed=true"

@@ -3,17 +3,19 @@ import { GoogleGenAI } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
 import { getServerUrl } from "./storage";
 
-// Access the key injected by Vite
-const apiKey = import.meta.env.VITE_API_KEY || "";
+// Declare the global constant defined in vite.config.ts
+declare const __API_KEY__: string;
 
-if (!apiKey) {
-    console.warn("[FamEats] API Key is missing in frontend bundle. AI features may fail.");
-} else {
-    console.log("[FamEats] API Key loaded successfully.");
-}
+// Use the global constant directly. 
+// Vite will replace __API_KEY__ with the actual string "AIza..." at build time.
+const API_KEY = typeof __API_KEY__ !== 'undefined' ? __API_KEY__ : '';
 
 // Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+if (!API_KEY) {
+    console.warn("[FamEats] API Key is missing. Consensus AI features will fail.");
+}
 
 // --- Helper: Call Backend Maps Proxy ---
 // This bypasses the AI and uses the Google Places API (New) via our Node server
@@ -25,9 +27,11 @@ const fetchPlacesFromBackend = async (
 ): Promise<Restaurant[]> => {
     try {
         const serverUrl = getServerUrl() || ''; 
-        // If local mode (no server url set), we try to hit the relative path, assuming we are served by the backend
+        // If local mode (no server url set), we try to hit the relative path
         const endpoint = serverUrl ? `${serverUrl}/api/places/search` : `/api/places/search`;
         
+        console.log(`[Search] Calling proxy: ${endpoint} for "${query}"`);
+
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -40,7 +44,11 @@ const fetchPlacesFromBackend = async (
             })
         });
 
-        if (!response.ok) throw new Error("Backend search failed");
+        if (!response.ok) {
+            const err = await response.text();
+            console.error(`[Search] Backend failed (${response.status}):`, err);
+            throw new Error("Backend search failed");
+        }
         
         const places = await response.json();
         
@@ -60,24 +68,22 @@ const fetchPlacesFromBackend = async (
     }
 };
 
-// --- 1. Search for a specific place (e.g. adding favorites) ---
+// --- 1. Search for a specific place (Favorites) ---
+// USES BACKEND PROXY (No AI)
 export const searchPlace = async (
   query: string,
   location: Coordinates | null
 ): Promise<Restaurant[]> => {
-    // Use the Maps Proxy
     return await fetchPlacesFromBackend(query, location, 5);
 };
 
-// --- 2. Consensus Calculation (KEEPING AI) ---
-// This logic is abstract negotiation, so AI is still the best tool for this part.
+// --- 2. Consensus Calculation (USES AI) ---
+// AI is used only for text negotiation, not for finding places.
 export const getCuisineConsensus = async (
   members: FamilyMember[]
 ): Promise<{ options: { cuisine: string; reasoning: string }[] }> => {
   
-  if (!apiKey) {
-      console.error("API Key is missing. AI features will fail.");
-      // Return a safe fallback so the app doesn't crash visually
+  if (!API_KEY) {
       return { options: [
           { cuisine: "Pizza", reasoning: "Consensus unavailable (API Key missing)." },
           { cuisine: "Burgers", reasoning: "Consensus unavailable (API Key missing)." },
@@ -111,7 +117,6 @@ export const getCuisineConsensus = async (
       return JSON.parse(text);
   } catch (e) {
       console.error("AI Consensus Error", e);
-      // Fallback if AI fails
       return { options: [
           { cuisine: "Pizza", reasoning: "Everyone loves pizza." },
           { cuisine: "Burgers", reasoning: "Safe bet." },
@@ -120,7 +125,7 @@ export const getCuisineConsensus = async (
   }
 };
 
-// --- 3. Find Best Place (Using Maps) ---
+// --- 3. Find Best Place (USES BACKEND PROXY) ---
 export const findBestPlace = async (
   cuisine: string,
   mode: DiningMode,
@@ -145,8 +150,11 @@ export const findBestPlace = async (
   }
 
   // B. Search Maps (Fast & Accurate)
-  const query = `${cuisine} restaurant`;
-  const results = await fetchPlacesFromBackend(query, location, 3, 4.0);
+  // We append "restaurant" or "delivery" based on mode
+  const suffix = mode === 'takeout' ? 'delivery' : 'restaurant';
+  const query = `${cuisine} ${suffix}`;
+  
+  const results = await fetchPlacesFromBackend(query, location, 3, 3.5);
 
   if (results.length > 0) {
       return {
@@ -168,10 +176,9 @@ export const findBestPlace = async (
   };
 };
 
-// --- 4. Roulette (Using Maps) ---
+// --- 4. Roulette (USES BACKEND PROXY) ---
 export const getRouletteOptions = async (
     location: Coordinates | null
 ): Promise<Restaurant[]> => {
-    // Search for highly rated "restaurants" in general
-    return await fetchPlacesFromBackend("restaurant", location, 6, 4.5);
+    return await fetchPlacesFromBackend("restaurant", location, 6, 4.0);
 };

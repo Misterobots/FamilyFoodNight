@@ -6,7 +6,7 @@ services:
     build:
       context: .
       args:
-        # We Map the local API_KEY to the VITE_API_KEY arg expected by Dockerfile
+        # Build-time variable for React Frontend (Vite needs VITE_ prefix)
         VITE_API_KEY: ${API_KEY}
     restart: unless-stopped
     networks:
@@ -16,6 +16,8 @@ services:
     environment:
       - DATA_DIR=/data
       - DB_PATH=/data/families.db
+      # CRITICAL: This enables the backend proxy to call Google Maps at runtime
+      - API_KEY=${API_KEY}
     labels:
       - "com.github.saltbox.saltbox_managed=true"
       - "diun.enable=true"
