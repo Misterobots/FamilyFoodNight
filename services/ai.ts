@@ -3,17 +3,12 @@ import { GoogleGenAI } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
 import { getServerUrl } from "./storage";
 
-// Safe access to environment variable
-const getApiKey = () => {
-  try {
-    // @ts-ignore
-    return import.meta.env.VITE_API_KEY || (typeof process !== 'undefined' ? process.env.VITE_API_KEY : "") || "";
-  } catch (e) {
-    return "";
-  }
-};
+// Access the key injected by Vite at build time via the global constant
+// @ts-ignore
+declare const __API_KEY__: string;
+const apiKey = typeof __API_KEY__ !== 'undefined' ? __API_KEY__ : "";
 
-const apiKey = getApiKey();
+// Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey });
 
 // --- Helper: Call Backend Maps Proxy ---
@@ -76,6 +71,16 @@ export const getCuisineConsensus = async (
   members: FamilyMember[]
 ): Promise<{ options: { cuisine: string; reasoning: string }[] }> => {
   
+  if (!apiKey) {
+      console.error("API Key is missing. AI features will fail.");
+      // Return a safe fallback so the app doesn't crash visually
+      return { options: [
+          { cuisine: "Pizza", reasoning: "Consensus unavailable (API Key missing)." },
+          { cuisine: "Burgers", reasoning: "Consensus unavailable (API Key missing)." },
+          { cuisine: "Tacos", reasoning: "Consensus unavailable (API Key missing)." }
+      ]};
+  }
+
   const memberData = members.map((m) => ({
       n: m.name,
       no: m.dietaryRestrictions || [],
@@ -101,6 +106,7 @@ export const getCuisineConsensus = async (
       if (!text) throw new Error("No response");
       return JSON.parse(text);
   } catch (e) {
+      console.error("AI Consensus Error", e);
       // Fallback if AI fails
       return { options: [
           { cuisine: "Pizza", reasoning: "Everyone loves pizza." },

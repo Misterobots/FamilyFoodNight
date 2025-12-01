@@ -89,8 +89,8 @@ app.get('/api/health', (req, res) => res.send('FamEats Sync Server Running'));
 // --- GOOGLE PLACES PROXY ---
 app.post('/api/places/search', async (req, res) => {
     if (!GOOGLE_API_KEY) {
-        console.error("API Key missing in server environment");
-        return res.status(500).json({ error: "Server missing API Key configuration" });
+        console.error("CRITICAL: API Key missing in server environment");
+        return res.status(500).json({ error: "Server configuration error: API Key missing" });
     }
 
     const { query, latitude, longitude, type, minRating, limit } = req.body;
@@ -115,6 +115,8 @@ app.post('/api/places/search', async (req, res) => {
             requestBody.minRating = minRating;
         }
 
+        console.log(`[Proxy] Searching Places: ${query}`);
+
         const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
             method: 'POST',
             headers: {
@@ -127,16 +129,17 @@ app.post('/api/places/search', async (req, res) => {
         });
 
         if (!response.ok) {
-            const err = await response.text();
-            console.error("Maps API Error from Google:", err);
-            return res.status(response.status).json({ error: "Maps API Error", details: err });
+            const errText = await response.text();
+            console.error(`[Proxy] Google API Error (${response.status}):`, errText);
+            return res.status(response.status).json({ error: "Maps API Error", details: errText });
         }
 
         const data = await response.json();
+        console.log(`[Proxy] Success. Found ${data.places ? data.places.length : 0} results.`);
         res.json(data.places || []);
 
     } catch (error) {
-        console.error("Proxy Internal Error:", error);
+        console.error("[Proxy] Internal Server Error:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 });

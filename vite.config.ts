@@ -4,9 +4,20 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
-  // We still load env for other purposes if needed, but we rely on VITE_ prefix for the app
-  const env = loadEnv(mode, (process as any).cwd(), '');
+  // Load env from file (.env) or system (Docker ENV)
+  const env = loadEnv(mode, process.cwd(), '');
+  
+  // Find the key from any possible source
+  const apiKey = process.env.VITE_API_KEY || env.VITE_API_KEY || process.env.API_KEY || env.API_KEY || '';
+
+  console.log(`[Vite Build] API Key detected: ${apiKey ? 'Yes (Hidden)' : 'No - Warning'}`);
+
   return {
+    define: {
+      // Define a global constant string for the API Key
+      // This bypasses 'import.meta.env' entirely, preventing the TypeError
+      '__API_KEY__': JSON.stringify(apiKey),
+    },
     plugins: [
       react(),
       VitePWA({
@@ -56,7 +67,6 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
-    // Removed the explicit define block to prevent overriding import.meta.env
     build: {
       outDir: 'dist',
       sourcemap: false
