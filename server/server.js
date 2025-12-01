@@ -33,7 +33,12 @@ db.exec(`
 
 // --- Express Setup ---
 const app = express();
-app.use(cors());
+
+// Update CORS to allow our custom header
+app.use(cors({
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-fameats-api-key']
+}));
+
 app.use(bodyParser.json({ limit: '10mb' }));
 
 // Serve Static Frontend Files
@@ -93,7 +98,9 @@ app.post('/api/places/search', async (req, res) => {
     const apiKey = ENV_API_KEY || clientKey;
 
     if (!apiKey) {
-        console.error("CRITICAL: API Key missing. Server Env present:", !!ENV_API_KEY, "Client Header present:", !!clientKey);
+        console.error("CRITICAL: API Key missing.");
+        console.error("  - Server Env API_KEY present:", !!ENV_API_KEY);
+        console.error("  - Client Header 'x-fameats-api-key' present:", !!clientKey);
         return res.status(500).json({ error: "Server configuration error: API Key missing" });
     }
 
