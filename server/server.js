@@ -191,9 +191,11 @@ app.get('*', (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  
   if (!GOOGLE_API_KEY) {
-      console.warn("WARNING: API_KEY is not set. Maps Proxy will fail.");
+      console.warn("WARNING: API_KEY is missing. Maps Proxy will fail.");
   } else {
-      console.log("API Key configured.");
+      const masked = GOOGLE_API_KEY.substring(0, 4) + '...';
+      console.log(`API Key configured: ${masked}`);
   }
 });

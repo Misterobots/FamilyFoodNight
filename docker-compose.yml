@@ -6,17 +6,17 @@ services:
     build:
       context: .
       args:
-        # Build-time variable for React Frontend (Vite needs VITE_ prefix)
         VITE_API_KEY: ${API_KEY}
     restart: unless-stopped
     networks:
       - saltbox
+    env_file:
+      - .env
     volumes:
       - ./data:/data
     environment:
       - DATA_DIR=/data
       - DB_PATH=/data/families.db
-      # CRITICAL: This enables the backend proxy to call Google Maps at runtime
       - API_KEY=${API_KEY}
     labels:
       - "com.github.saltbox.saltbox_managed=true"
@@ -24,19 +24,14 @@ services:
       - "autoheal=true"
       - "autoheal.stop.timeout=10"
       - "traefik.enable=true"
-      
-      # HTTP Router
       - "traefik.http.routers.fameats-http.entrypoints=web"
       - "traefik.http.routers.fameats-http.rule=Host(`fameats.shivelymedia.com`)"
       - "traefik.http.routers.fameats-http.middlewares=globalHeaders@file,redirect-to-https@docker"
-      
-      # HTTPS Router
       - "traefik.http.routers.fameats.entrypoints=websecure"
       - "traefik.http.routers.fameats.rule=Host(`fameats.shivelymedia.com`)"
       - "traefik.http.routers.fameats.tls.certresolver=cfdns"
       - "traefik.http.routers.fameats.tls.options=securetls@file"
       - "traefik.http.routers.fameats.middlewares=globalHeaders@file,secureHeaders@file"
-      
       - "traefik.http.services.fameats.loadbalancer.server.port=3000"
 
 networks:
