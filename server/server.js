@@ -12,7 +12,7 @@ const fs = require('fs');
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'families.db');
-// We use the same API Key for simplicity, but in production, you might want a separate GOOGLE_MAPS_KEY
+// We use the same API Key for simplicity
 const GOOGLE_API_KEY = process.env.API_KEY || process.env.VITE_API_KEY;
 
 if (!fs.existsSync(DATA_DIR)){
@@ -89,6 +89,7 @@ app.get('/api/health', (req, res) => res.send('FamEats Sync Server Running'));
 // --- GOOGLE PLACES PROXY ---
 app.post('/api/places/search', async (req, res) => {
     if (!GOOGLE_API_KEY) {
+        console.error("API Key missing in server environment");
         return res.status(500).json({ error: "Server missing API Key configuration" });
     }
 
@@ -127,15 +128,15 @@ app.post('/api/places/search', async (req, res) => {
 
         if (!response.ok) {
             const err = await response.text();
-            console.error("Maps API Error:", err);
-            return res.status(response.status).json({ error: "Maps API Error" });
+            console.error("Maps API Error from Google:", err);
+            return res.status(response.status).json({ error: "Maps API Error", details: err });
         }
 
         const data = await response.json();
         res.json(data.places || []);
 
     } catch (error) {
-        console.error("Proxy Error:", error);
+        console.error("Proxy Internal Error:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
@@ -187,4 +188,9 @@ app.get('*', (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  if (!GOOGLE_API_KEY) {
+      console.warn("WARNING: API_KEY is not set. Maps Proxy will fail.");
+  } else {
+      console.log("API Key configured.");
+  }
 });
