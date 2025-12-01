@@ -1,178 +1,116 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
+import { getServerUrl } from "./storage";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-// --- JSON Parsing Utility ---
-const cleanAndParseJSON = (text: string): any => {
-  if (!text) return [];
+// Safe access to environment variable
+const getApiKey = () => {
   try {
-    // 1. Try parsing directly
-    return JSON.parse(text);
+    // @ts-ignore
+    return import.meta.env.VITE_API_KEY || (typeof process !== 'undefined' ? process.env.VITE_API_KEY : "") || "";
   } catch (e) {
-    // 2. Try cleaning markdown code blocks
-    try {
-      let clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
-      return JSON.parse(clean);
-    } catch (e2) {
-      // 3. Try regex extraction for arrays
-      try {
-        const arrayMatch = text.match(/\[[\s\S]*\]/);
-        if (arrayMatch) return JSON.parse(arrayMatch[0]);
-        
-        // 4. Try regex for objects wrapped in array
-        const objectMatch = text.match(/\{[\s\S]*\}/);
-        if (objectMatch) return [JSON.parse(objectMatch[0])];
-      } catch (e3) {
-        console.error("JSON Parsing failed completely", text);
-        // Don't throw, just return empty to prevent UI crash
-        return [];
-      }
-    }
+    return "";
   }
-  return [];
 };
 
-// --- Helper to search for a specific place ---
+const apiKey = getApiKey();
+const ai = new GoogleGenAI({ apiKey });
+
+// --- Helper: Call Backend Maps Proxy ---
+// This bypasses the AI and uses the Google Places API (New) via our Node server
+const fetchPlacesFromBackend = async (
+    query: string, 
+    location: Coordinates | null,
+    limit: number = 3,
+    minRating: number = 0
+): Promise<Restaurant[]> => {
+    try {
+        const serverUrl = getServerUrl() || ''; 
+        // If local mode (no server url set), we try to hit the relative path, assuming we are served by the backend
+        const endpoint = serverUrl ? `${serverUrl}/api/places/search` : `/api/places/search`;
+        
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query,
+                latitude: location?.latitude,
+                longitude: location?.longitude,
+                limit,
+                minRating
+            })
+        });
+
+        if (!response.ok) throw new Error("Backend search failed");
+        
+        const places = await response.json();
+        
+        return places.map((p: any) => ({
+            name: p.displayName?.text || "Unknown",
+            cuisine: p.primaryType ? p.primaryType.replace(/_/g, ' ') : "Restaurant",
+            flavorProfile: [],
+            rating: p.rating || 0,
+            address: p.formattedAddress || "See Map",
+            source: 'search',
+            googleMapsUri: p.googleMapsUri
+        }));
+
+    } catch (e) {
+        console.error("Maps Proxy Error", e);
+        return [];
+    }
+};
+
+// --- 1. Search for a specific place (e.g. adding favorites) ---
 export const searchPlace = async (
   query: string,
   location: Coordinates | null
 ): Promise<Restaurant[]> => {
-  let locationStr = "globally (or near user's IP)";
-  
-  if (location) {
-    locationStr = `lat: ${location.latitude}, long: ${location.longitude}`;
-  }
-
-  const prompt = `
-    Using Google Search, find restaurants matching the name "${query}" near ${locationStr}.
-    Return a list of up to 5 matches.
-    
-    Instructions:
-    1. If the location is provided coordinates, search strictly near there.
-    2. If the location is NOT provided, try to infer it from the query (e.g. "Joe's Pizza Chicago").
-    3. If no location context exists, return popular matches globally or return an empty list.
-    4. CRITICAL: Output MUST be a valid JSON array. No conversational text.
-    
-    JSON Structure per item:
-    {
-      "name": "string",
-      "cuisine": "string",
-      "flavorProfile": ["string", "string"],
-      "rating": 4.5,
-      "address": "string"
-    }
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
-
-    const text = response.text;
-    console.log("Search Place Raw Response:", text); // Debug log
-    
-    if (!text) return [];
-
-    const rawPlaces = cleanAndParseJSON(text);
-    
-    // Add grounding
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    
-    const attachUri = (placeName: string) => {
-        const chunk = groundingChunks.find(c => 
-          c.web?.title?.toLowerCase().includes(placeName.toLowerCase())
-        );
-        return chunk?.web?.uri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName)}`;
-    };
-
-    if (!Array.isArray(rawPlaces)) return [];
-
-    return rawPlaces.map((p: any) => ({
-      name: p.name,
-      cuisine: p.cuisine || "Unknown",
-      flavorProfile: Array.isArray(p.flavorProfile) ? p.flavorProfile : [],
-      rating: p.rating,
-      address: p.address,
-      source: 'search',
-      googleMapsUri: attachUri(p.name)
-    }));
-
-  } catch (e) {
-    console.error("Failed to parse place search", e);
-    return [];
-  }
+    // Use the Maps Proxy
+    return await fetchPlacesFromBackend(query, location, 5);
 };
 
-// --- Helper to get consensus on cuisine ---
+// --- 2. Consensus Calculation (KEEPING AI) ---
+// This logic is abstract negotiation, so AI is still the best tool for this part.
 export const getCuisineConsensus = async (
   members: FamilyMember[]
 ): Promise<{ options: { cuisine: string; reasoning: string }[] }> => {
   
-  // Map new data structure to prompt
-  const memberData = members.map((m) => {
-    // Format favorites to include flavor profile context
-    const favoritesContext = m.favorites.map(f => {
-       const flavors = f.flavorProfile && f.flavorProfile.length > 0 ? ` - Known for: ${f.flavorProfile.join(', ')}` : '';
-       return `${f.name} (${f.cuisine}${flavors})`;
-    });
-
-    return {
-      name: m.name,
-      cannotEat: m.dietaryRestrictions || [],
-      likes: m.cuisinePreferences || [],
-      loves: m.flavorPreferences || [],
-      favoritePlaces: favoritesContext
-    };
-  });
+  const memberData = members.map((m) => ({
+      n: m.name,
+      no: m.dietaryRestrictions || [],
+      like: m.cuisinePreferences || [],
+      love: (m.flavorPreferences || []).slice(0, 2), 
+      fav: (m.favorites || []).slice(0, 3).map(f => f.cuisine)
+  }));
 
   const prompt = `
-    Here are the food profiles of family members who want to eat together:
-    ${JSON.stringify(memberData)}
-
-    Analyze these profiles.
-    1. STRICT RULE: Do NOT suggest cuisines that violate any member's "cannotEat" restrictions.
-    2. Prioritize intersections of "loves" and the flavor profiles of their "favoritePlaces".
-    3. Use "likes" as secondary weights.
-    4. Return exactly 3 distinct cuisine options for them to vote on.
-    5. Provide a very short, fun reasoning for each option (max 10 words).
+    Analyze: ${JSON.stringify(memberData)}
+    Return 3 cuisine options that maximize 'like'/'love' and avoid 'no'.
+    Format: JSON { "options": [{"cuisine": "...", "reasoning": "..."}] }
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          options: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                cuisine: { type: Type.STRING },
-                reasoning: { type: Type.STRING },
-              },
-              required: ["cuisine", "reasoning"],
-            },
-          },
-        },
-      },
-    },
-  });
+  try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: { responseMimeType: "application/json" },
+      });
 
-  const text = response.text;
-  if (!text) throw new Error("No response from AI");
-  return JSON.parse(text);
+      const text = response.text;
+      if (!text) throw new Error("No response");
+      return JSON.parse(text);
+  } catch (e) {
+      // Fallback if AI fails
+      return { options: [
+          { cuisine: "Pizza", reasoning: "Everyone loves pizza." },
+          { cuisine: "Burgers", reasoning: "Safe bet." },
+          { cuisine: "Mexican", reasoning: "Popular choice." }
+      ]};
+  }
 };
 
-// --- Helper to find the specific place ---
+// --- 3. Find Best Place (Using Maps) ---
 export const findBestPlace = async (
   cuisine: string,
   mode: DiningMode,
@@ -180,169 +118,50 @@ export const findBestPlace = async (
   location: Coordinates | null
 ): Promise<{ recommended: Restaurant; alternatives: Restaurant[] }> => {
   
+  // A. Check Favorites (Instant)
   const allFavorites = members.flatMap((m) => m.favorites);
-  
-  // Filter favorites by cuisine to prioritize them
-  const relevantFavorites = allFavorites.filter(f => f.cuisine.toLowerCase().includes(cuisine.toLowerCase()) || cuisine.toLowerCase().includes(f.cuisine.toLowerCase()));
+  const relevantFavorites = allFavorites.filter(f => 
+    f.cuisine.toLowerCase().includes(cuisine.toLowerCase()) || 
+    cuisine.toLowerCase().includes(f.cuisine.toLowerCase())
+  );
 
-  let locationStr = "the user's current location";
-
-  if (location) {
-    locationStr = `lat: ${location.latitude}, long: ${location.longitude}`;
-  }
-
-  const prompt = `
-    Task: Find the best place to eat.
-    Context: The family has chosen "${cuisine}". Mode: "${mode}".
-    Current Location: ${locationStr}.
-    Relevant Family Favorites (Prioritize these if they match the cuisine): ${JSON.stringify(relevantFavorites)}
-    
-    Dietary Restrictions (CRITICAL): ${JSON.stringify(members.map(m => m.dietaryRestrictions).flat())}
-    Flavor Preferences (Consider these): ${JSON.stringify(members.map(m => m.flavorPreferences).flat())}
-
-    Instructions:
-    1. Check "Relevant Family Favorites" first. If one matches the cuisine and mode well, recommend it.
-    2. If no favorites match, use Google Search to find 3 highly rated "${cuisine}" places near ${locationStr} suitable for "${mode}".
-    3. Ensure recommendations respect the Dietary Restrictions provided.
-    4. Output Valid JSON ONLY. No markdown.
-       Structure:
-       {
-         "recommended": { "name": "...", "cuisine": "...", "rating": 4.5, "address": "...", "flavorProfile": ["..."] },
-         "alternatives": [ ...same structure... ]
-       }
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
-
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    let cleanText = response.text || "";
-    
-    let parsedData: { recommended: any; alternatives: any[] };
-    
-    try {
-       parsedData = cleanAndParseJSON(cleanText);
-       // Handle cases where parsing returns array instead of object
-       if (Array.isArray(parsedData)) {
-         parsedData = {
-           recommended: parsedData[0],
-           alternatives: parsedData.slice(1)
-         }
-       }
-    } catch (e) {
-      parsedData = {
-          recommended: { name: "Search Result", cuisine: cuisine, source: "search", address: "See map" },
-          alternatives: []
+  if (relevantFavorites.length > 0) {
+      const winner = relevantFavorites.sort((a,b) => (b.rating || 0) - (a.rating || 0))[0];
+      const alts = relevantFavorites.filter(f => f.name !== winner.name).slice(0, 2);
+      return {
+          recommended: { ...winner, source: 'favorite' },
+          alternatives: alts
       };
-    }
-
-    // Fallback if parsedData is empty/malformed
-    if (!parsedData.recommended) {
-        parsedData = {
-            recommended: { name: "Search Failed", cuisine: cuisine, source: "search", address: "See map" },
-            alternatives: []
-        };
-    }
-
-    const attachUri = (placeName: string) => {
-      const chunk = groundingChunks.find(c => 
-        c.web?.title?.toLowerCase().includes(placeName.toLowerCase()) || 
-        (c.web?.uri && placeName.toLowerCase().includes("restaurant"))
-      );
-      return chunk?.web?.uri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName)}`;
-    };
-
-    const processPlace = (p: any): Restaurant => ({
-        name: p?.name || "Unknown Place",
-        cuisine: p?.cuisine || cuisine,
-        flavorProfile: Array.isArray(p?.flavorProfile) ? p.flavorProfile : [],
-        rating: p?.rating,
-        address: p?.address,
-        source: p?.source || 'search',
-        googleMapsUri: attachUri(p?.name || "place")
-    });
-
-    return {
-      recommended: processPlace(parsedData.recommended),
-      alternatives: (parsedData.alternatives || []).map(processPlace)
-    };
-  } catch (e) {
-    console.error("Find Best Place Error", e);
-    throw e;
   }
+
+  // B. Search Maps (Fast & Accurate)
+  const query = `${cuisine} restaurant`;
+  const results = await fetchPlacesFromBackend(query, location, 3, 4.0);
+
+  if (results.length > 0) {
+      return {
+          recommended: results[0],
+          alternatives: results.slice(1)
+      };
+  }
+
+  // C. Fallback
+  return {
+      recommended: { 
+          name: `${cuisine} Place`, 
+          cuisine: cuisine, 
+          source: 'search', 
+          rating: 0,
+          googleMapsUri: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cuisine)}` 
+      },
+      alternatives: []
+  };
 };
 
-// --- Helper for Roulette ---
+// --- 4. Roulette (Using Maps) ---
 export const getRouletteOptions = async (
     location: Coordinates | null
 ): Promise<Restaurant[]> => {
-    
-    let locationStr = "current location";
-    if (location) {
-        locationStr = `lat: ${location.latitude}, long: ${location.longitude}`;
-    }
-
-    const prompt = `
-      Use Google Search to find 6 diverse, highly-rated restaurants near ${locationStr}.
-      They must be different cuisines (e.g., one Italian, one Thai, one Burger, etc.).
-      
-      Return a valid JSON array of objects (NO markdown blocks).
-      Keys: name, cuisine, rating.
-    `;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-            },
-        });
-
-        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        let cleanText = response.text || "";
-        
-        let places: any[] = [];
-        try {
-           const parsed: any = cleanAndParseJSON(cleanText);
-           if(Array.isArray(parsed)) {
-               places = parsed;
-           } else if (parsed && typeof parsed === 'object') {
-               const keys = Object.keys(parsed);
-               const arrayKey = keys.find(k => Array.isArray(parsed[k]));
-               if (arrayKey) {
-                 places = parsed[arrayKey];
-               } else {
-                 if(parsed.name) places = [parsed];
-               }
-           }
-        } catch (e) {
-            console.error("Failed to parse roulette options", e);
-            return [];
-        }
-
-        const attachUri = (placeName: string) => {
-            const chunk = groundingChunks.find(c => 
-              c.web?.title?.toLowerCase().includes(placeName.toLowerCase())
-            );
-            return chunk?.web?.uri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName)}`;
-        };
-
-        return places.slice(0, 6).map(p => ({
-            name: p.name,
-            cuisine: p.cuisine,
-            rating: p.rating,
-            source: 'roulette',
-            googleMapsUri: attachUri(p.name)
-        }));
-    } catch (e) {
-        console.error("Roulette Error", e);
-        return [];
-    }
+    // Search for highly rated "restaurants" in general
+    return await fetchPlacesFromBackend("restaurant", location, 6, 4.5);
 };

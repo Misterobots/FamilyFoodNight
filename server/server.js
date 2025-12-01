@@ -12,6 +12,8 @@ const fs = require('fs');
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'families.db');
+// We use the same API Key for simplicity, but in production, you might want a separate GOOGLE_MAPS_KEY
+const GOOGLE_API_KEY = process.env.API_KEY || process.env.VITE_API_KEY;
 
 if (!fs.existsSync(DATA_DIR)){
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -35,7 +37,6 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 
 // Serve Static Frontend Files
-// Dockerfile will copy the built 'dist' folder to 'public' inside the container
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
@@ -85,6 +86,60 @@ const broadcastUpdate = (familyId) => {
 
 app.get('/api/health', (req, res) => res.send('FamEats Sync Server Running'));
 
+// --- GOOGLE PLACES PROXY ---
+app.post('/api/places/search', async (req, res) => {
+    if (!GOOGLE_API_KEY) {
+        return res.status(500).json({ error: "Server missing API Key configuration" });
+    }
+
+    const { query, latitude, longitude, type, minRating, limit } = req.body;
+
+    try {
+        const requestBody = {
+            textQuery: query,
+            maxResultCount: limit || 5,
+        };
+
+        // Add location bias if coordinates exist
+        if (latitude && longitude) {
+            requestBody.locationBias = {
+                circle: {
+                    center: { latitude, longitude },
+                    radius: 5000.0 // 5km radius bias
+                }
+            };
+        }
+        
+        if (minRating) {
+            requestBody.minRating = minRating;
+        }
+
+        const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': GOOGLE_API_KEY,
+                // Request specific fields to save data/latency
+                'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri,places.primaryType,places.types'
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            console.error("Maps API Error:", err);
+            return res.status(response.status).json({ error: "Maps API Error" });
+        }
+
+        const data = await response.json();
+        res.json(data.places || []);
+
+    } catch (error) {
+        console.error("Proxy Error:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
 app.get('/api/family/:id', (req, res) => {
   try {
     const stmt = db.prepare('SELECT data, last_updated FROM families WHERE id = ?');
@@ -121,18 +176,15 @@ app.post('/api/family', (req, res) => {
   }
 });
 
-// Fallback to index.html for SPA routing
 app.get('*', (req, res) => {
     const index = path.join(__dirname, 'public', 'index.html');
     if (fs.existsSync(index)) {
         res.sendFile(index);
     } else {
-        // If frontend build is missing, return simple message
         res.send('FamEats API Running. Frontend build not found in /public.');
     }
 });
 
-// --- Start Server ---
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
