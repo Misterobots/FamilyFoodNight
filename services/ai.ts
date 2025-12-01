@@ -34,7 +34,10 @@ const fetchPlacesFromBackend = async (
 
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'x-fameats-api-key': API_KEY // Pass the client key as fallback
+            },
             body: JSON.stringify({
                 query,
                 latitude: location?.latitude,

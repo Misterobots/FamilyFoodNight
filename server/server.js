@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'families.db');
 // We use the same API Key for simplicity
-const GOOGLE_API_KEY = process.env.API_KEY || process.env.VITE_API_KEY;
+const ENV_API_KEY = process.env.API_KEY || process.env.VITE_API_KEY;
 
 if (!fs.existsSync(DATA_DIR)){
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -88,8 +88,12 @@ app.get('/api/health', (req, res) => res.send('FamEats Sync Server Running'));
 
 // --- GOOGLE PLACES PROXY ---
 app.post('/api/places/search', async (req, res) => {
-    if (!GOOGLE_API_KEY) {
-        console.error("CRITICAL: API Key missing in server environment");
+    // Allow API Key from Environment OR Header (Client Fallback)
+    const clientKey = req.get('x-fameats-api-key');
+    const apiKey = ENV_API_KEY || clientKey;
+
+    if (!apiKey) {
+        console.error("CRITICAL: API Key missing. Server Env present:", !!ENV_API_KEY, "Client Header present:", !!clientKey);
         return res.status(500).json({ error: "Server configuration error: API Key missing" });
     }
 
@@ -121,7 +125,7 @@ app.post('/api/places/search', async (req, res) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Goog-Api-Key': GOOGLE_API_KEY,
+                'X-Goog-Api-Key': apiKey,
                 // Request specific fields to save data/latency
                 'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri,places.primaryType,places.types'
             },
@@ -192,10 +196,10 @@ app.get('*', (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   
-  if (!GOOGLE_API_KEY) {
-      console.warn("WARNING: API_KEY is missing. Maps Proxy will fail.");
+  if (!ENV_API_KEY) {
+      console.warn("WARNING: API_KEY is missing in env. Expecting it via headers from client.");
   } else {
-      const masked = GOOGLE_API_KEY.substring(0, 4) + '...';
+      const masked = ENV_API_KEY.substring(0, 4) + '...';
       console.log(`API Key configured: ${masked}`);
   }
 });
