@@ -193,8 +193,8 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                             ))}
                         </div>
                         <div className="mt-auto flex gap-4">
-                            <button onClick={onCancel} className="px-4 py-4 font-bold text-gray-400 hover:bg-gray-100 rounded-2xl transition-colors" aria-label="Cancel">
-                                <ArrowLeft size={24} />
+                            <button onClick={onCancel} className="px-6 py-5 font-bold text-gray-400 hover:bg-gray-100 rounded-[1.5rem] transition-colors flex items-center gap-2" aria-label="Cancel">
+                                <ArrowLeft size={20} /> Back
                             </button>
                             <motion.button 
                                 whileTap={{ scale: 0.95 }}

@@ -4,15 +4,28 @@ import { FamilySession } from './types';
 import { FamilyManager } from './components/FamilyManager';
 import { DecisionFlow } from './components/DecisionFlow';
 import { AuthScreen } from './components/AuthScreen';
-import { saveSession, subscribeToSync, logout } from './services/storage';
-import { LogOut, CloudSun, Sparkles, ArrowRight, Signal, Wifi, Battery } from 'lucide-react';
+import { saveSession, subscribeToSync, logout, restoreLastSession } from './services/storage';
+import { LogOut, CloudSun, Sparkles, ArrowRight, Signal, Wifi, Battery, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<FamilySession | null>(null);
   const [isDecisionActive, setIsDecisionActive] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   
+  // Auto-Login / Restore Session
+  useEffect(() => {
+      const init = async () => {
+          const restored = await restoreLastSession();
+          if (restored) {
+              setSession(restored);
+          }
+          setIsInitializing(false);
+      };
+      init();
+  }, []);
+
   // Sync Subscription
   useEffect(() => {
     if (session) {
@@ -78,7 +91,15 @@ const App: React.FC = () => {
 
             <div className="flex-1 overflow-hidden relative flex flex-col">
                 <AnimatePresence mode="wait">
-                    {!session ? (
+                    {isInitializing ? (
+                        <motion.div 
+                            key="loader"
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="h-full flex items-center justify-center bg-white z-50"
+                        >
+                            <Loader2 size={40} className="text-orange-500 animate-spin" />
+                        </motion.div>
+                    ) : !session ? (
                         <motion.div 
                             key="auth"
                             initial={{ opacity: 0, x: 20 }} 
