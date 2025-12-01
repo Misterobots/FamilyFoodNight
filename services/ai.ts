@@ -3,10 +3,14 @@ import { GoogleGenAI } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
 import { getServerUrl } from "./storage";
 
-// Access the key injected by Vite at build time via the global constant
-// @ts-ignore
-declare const __API_KEY__: string;
-const apiKey = typeof __API_KEY__ !== 'undefined' ? __API_KEY__ : "";
+// Access the key injected by Vite
+const apiKey = import.meta.env.VITE_API_KEY || "";
+
+if (!apiKey) {
+    console.warn("[FamEats] API Key is missing in frontend bundle. AI features may fail.");
+} else {
+    console.log("[FamEats] API Key loaded successfully.");
+}
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey });
