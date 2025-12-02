@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { FamilyMember, DiningMode, VoteOption, Coordinates, Restaurant } from '../types';
 import { getCuisineConsensus, findBestPlace, getRouletteOptions } from '../services/ai';
-import { Utensils, ShoppingBag, CheckCircle, Loader2, MapPin, Star, ArrowRight, ArrowLeft, Sparkles, PartyPopper } from 'lucide-react';
+import { Utensils, ShoppingBag, CheckCircle, Loader2, MapPin, Star, ArrowRight, ArrowLeft, Sparkles, PartyPopper, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Roulette } from './Roulette';
 
@@ -170,9 +170,14 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                 {/* 1. SELECT WHO */}
                 {step === 'select-who' && (
                     <motion.div key="who" variants={containerVariants} initial="hidden" animate="visible" exit="exit" className="flex flex-col h-full">
-                        <div className="mb-6 mt-2">
-                            <h2 className="text-3xl font-heading font-black text-gray-900 mb-1">Roll Call 🥁</h2>
-                            <p className="text-gray-500 font-medium">Who is joining the feast?</p>
+                        <div className="mb-6 mt-2 flex justify-between items-start">
+                            <div>
+                                <h2 className="text-3xl font-heading font-black text-gray-900 mb-1">Roll Call 🥁</h2>
+                                <p className="text-gray-500 font-medium">Who is joining the feast?</p>
+                            </div>
+                            <button onClick={onCancel} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors">
+                                <X size={20} />
+                            </button>
                         </div>
                         <div className="grid grid-cols-1 gap-3 mb-8">
                             {members.map(m => (
@@ -329,28 +334,38 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                              </div>
                         </div>
 
-                        <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100 mb-6 relative group transform transition-all hover:scale-[1.02]">
-                             <div className="h-40 bg-gray-900 relative overflow-hidden">
-                                  <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
-                                  <div className="absolute bottom-6 left-6 text-white">
-                                      <div className="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-1">Recommended By</div>
-                                      <div className="font-bold flex items-center gap-2 text-orange-300"><Sparkles size={16}/> AI Consensus</div>
-                                  </div>
-                             </div>
-                             <div className="p-6">
-                                  <div className="flex items-start gap-4 mb-6">
-                                      <div className="bg-orange-50 p-3 rounded-2xl text-orange-600"><MapPin size={24} /></div>
-                                      <div>
-                                          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Address</div>
-                                          <div className="font-medium text-lg text-gray-800 leading-snug">{result.recommended.address || "Check maps"}</div>
+                        {result.recommended.source === 'search' && result.recommended.rating === 0 ? (
+                           <div className="bg-red-50 rounded-[2.5rem] p-6 text-center border border-red-100 mb-6">
+                                <h3 className="text-xl font-bold text-red-600 mb-2">Search Failed</h3>
+                                <p className="text-sm text-gray-500 mb-4">We couldn't find specific details for "{result.recommended.cuisine}".</p>
+                                <a href={result.recommended.googleMapsUri} target="_blank" rel="noreferrer" className="block w-full bg-red-600 text-white text-center py-4 rounded-2xl font-bold text-lg hover:bg-red-700 transition-all shadow-xl">
+                                    Search on Google Maps
+                                </a>
+                           </div>
+                        ) : (
+                            <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100 mb-6 relative group transform transition-all hover:scale-[1.02]">
+                                 <div className="h-40 bg-gray-900 relative overflow-hidden">
+                                      <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                                      <div className="absolute bottom-6 left-6 text-white">
+                                          <div className="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-1">Recommended By</div>
+                                          <div className="font-bold flex items-center gap-2 text-orange-300"><Sparkles size={16}/> AI Consensus</div>
                                       </div>
-                                  </div>
-                                  <a href={result.recommended.googleMapsUri} target="_blank" rel="noreferrer" className="block w-full bg-gray-900 text-white text-center py-4 rounded-2xl font-bold text-lg hover:bg-black transition-all shadow-xl">
-                                      Open in Maps
-                                  </a>
-                             </div>
-                        </div>
+                                 </div>
+                                 <div className="p-6">
+                                      <div className="flex items-start gap-4 mb-6">
+                                          <div className="bg-orange-50 p-3 rounded-2xl text-orange-600"><MapPin size={24} /></div>
+                                          <div>
+                                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Address</div>
+                                              <div className="font-medium text-lg text-gray-800 leading-snug">{result.recommended.address || "Check maps"}</div>
+                                          </div>
+                                      </div>
+                                      <a href={result.recommended.googleMapsUri} target="_blank" rel="noreferrer" className="block w-full bg-gray-900 text-white text-center py-4 rounded-2xl font-bold text-lg hover:bg-black transition-all shadow-xl">
+                                          Open in Maps
+                                      </a>
+                                 </div>
+                            </div>
+                        )}
 
                         <div className="mt-auto text-center pb-4">
                              <button onClick={onCancel} className="text-gray-400 font-bold hover:text-gray-600 text-xs uppercase tracking-widest py-4">Start Over</button>

@@ -7,17 +7,7 @@ export default defineConfig(({ mode }) => {
   // Load env from file (.env) or system (Docker ENV)
   const env = loadEnv(mode, process.cwd(), '');
   
-  // Prioritize Docker Env Var (VITE_API_KEY) then .env file
-  const apiKey = process.env.VITE_API_KEY || env.VITE_API_KEY || '';
-  
-  console.log(`[Vite Build] Injection Key present: ${!!apiKey}`);
-
   return {
-    define: {
-      // Create a global constant that contains the API key string.
-      // This is safer than relying on import.meta.env in Docker environments.
-      __API_KEY__: JSON.stringify(apiKey),
-    },
     plugins: [
       react(),
       VitePWA({

@@ -3,12 +3,8 @@ import { GoogleGenAI } from "@google/genai";
 import { FamilyMember, DiningMode, Restaurant, Coordinates } from "../types";
 import { getServerUrl } from "./storage";
 
-// Declare the global constant defined in vite.config.ts
-declare const __API_KEY__: string;
-
-// Use the global constant directly. 
-// Vite will replace __API_KEY__ with the actual string "AIza..." at build time.
-const API_KEY = typeof __API_KEY__ !== 'undefined' ? __API_KEY__ : '';
+// Standard Vite environment variable
+const API_KEY = import.meta.env.VITE_API_KEY || '';
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -27,7 +23,9 @@ const fetchPlacesFromBackend = async (
 ): Promise<Restaurant[]> => {
     try {
         const serverUrl = getServerUrl() || ''; 
-        // If local mode (no server url set), we try to hit the relative path
+        // If local mode (no server url set), we try to hit the relative path. 
+        // NOTE: On mobile PWA, 'serverUrl' might be missing if user didn't explicitly set it, 
+        // but if the app is served from the same domain, relative path works.
         const endpoint = serverUrl ? `${serverUrl}/api/places/search` : `/api/places/search`;
         
         console.log(`[Search] Calling proxy: ${endpoint} for "${query}"`);
@@ -44,141 +42,4 @@ const fetchPlacesFromBackend = async (
             })
         });
 
-        if (!response.ok) {
-            const err = await response.text();
-            console.error(`[Search] Backend failed (${response.status}):`, err);
-            throw new Error("Backend search failed");
-        }
-        
-        const places = await response.json();
-        
-        return places.map((p: any) => ({
-            name: p.displayName?.text || "Unknown",
-            cuisine: p.primaryType ? p.primaryType.replace(/_/g, ' ') : "Restaurant",
-            flavorProfile: [],
-            rating: p.rating || 0,
-            address: p.formattedAddress || "See Map",
-            source: 'search',
-            googleMapsUri: p.googleMapsUri
-        }));
-
-    } catch (e) {
-        console.error("Maps Proxy Error", e);
-        return [];
-    }
-};
-
-// --- 1. Search for a specific place (Favorites) ---
-// USES BACKEND PROXY (No AI)
-export const searchPlace = async (
-  query: string,
-  location: Coordinates | null
-): Promise<Restaurant[]> => {
-    return await fetchPlacesFromBackend(query, location, 5);
-};
-
-// --- 2. Consensus Calculation (USES AI) ---
-// AI is used only for text negotiation, not for finding places.
-export const getCuisineConsensus = async (
-  members: FamilyMember[]
-): Promise<{ options: { cuisine: string; reasoning: string }[] }> => {
-  
-  if (!API_KEY) {
-      return { options: [
-          { cuisine: "Pizza", reasoning: "Consensus unavailable (API Key missing)." },
-          { cuisine: "Burgers", reasoning: "Consensus unavailable (API Key missing)." },
-          { cuisine: "Tacos", reasoning: "Consensus unavailable (API Key missing)." }
-      ]};
-  }
-
-  const memberData = members.map((m) => ({
-      n: m.name,
-      no: m.dietaryRestrictions || [],
-      like: m.cuisinePreferences || [],
-      love: (m.flavorPreferences || []).slice(0, 2), 
-      fav: (m.favorites || []).slice(0, 3).map(f => f.cuisine)
-  }));
-
-  const prompt = `
-    Analyze: ${JSON.stringify(memberData)}
-    Return 3 cuisine options that maximize 'like'/'love' and avoid 'no'.
-    Format: JSON { "options": [{"cuisine": "...", "reasoning": "..."}] }
-  `;
-
-  try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: { responseMimeType: "application/json" },
-      });
-
-      const text = response.text;
-      if (!text) throw new Error("No response");
-      return JSON.parse(text);
-  } catch (e) {
-      console.error("AI Consensus Error", e);
-      return { options: [
-          { cuisine: "Pizza", reasoning: "Everyone loves pizza." },
-          { cuisine: "Burgers", reasoning: "Safe bet." },
-          { cuisine: "Mexican", reasoning: "Popular choice." }
-      ]};
-  }
-};
-
-// --- 3. Find Best Place (USES BACKEND PROXY) ---
-export const findBestPlace = async (
-  cuisine: string,
-  mode: DiningMode,
-  members: FamilyMember[],
-  location: Coordinates | null
-): Promise<{ recommended: Restaurant; alternatives: Restaurant[] }> => {
-  
-  // A. Check Favorites (Instant)
-  const allFavorites = members.flatMap((m) => m.favorites);
-  const relevantFavorites = allFavorites.filter(f => 
-    f.cuisine.toLowerCase().includes(cuisine.toLowerCase()) || 
-    cuisine.toLowerCase().includes(f.cuisine.toLowerCase())
-  );
-
-  if (relevantFavorites.length > 0) {
-      const winner = relevantFavorites.sort((a,b) => (b.rating || 0) - (a.rating || 0))[0];
-      const alts = relevantFavorites.filter(f => f.name !== winner.name).slice(0, 2);
-      return {
-          recommended: { ...winner, source: 'favorite' },
-          alternatives: alts
-      };
-  }
-
-  // B. Search Maps (Fast & Accurate)
-  // We append "restaurant" or "delivery" based on mode
-  const suffix = mode === 'takeout' ? 'delivery' : 'restaurant';
-  const query = `${cuisine} ${suffix}`;
-  
-  const results = await fetchPlacesFromBackend(query, location, 3, 3.5);
-
-  if (results.length > 0) {
-      return {
-          recommended: results[0],
-          alternatives: results.slice(1)
-      };
-  }
-
-  // C. Fallback
-  return {
-      recommended: { 
-          name: `${cuisine} Place`, 
-          cuisine: cuisine, 
-          source: 'search', 
-          rating: 0,
-          googleMapsUri: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cuisine)}` 
-      },
-      alternatives: []
-  };
-};
-
-// --- 4. Roulette (USES BACKEND PROXY) ---
-export const getRouletteOptions = async (
-    location: Coordinates | null
-): Promise<Restaurant[]> => {
-    return await fetchPlacesFromBackend("restaurant", location, 6, 4.0);
-};
+        if (!response.ok)

@@ -4,7 +4,7 @@ import { FamilySession } from './types';
 import { FamilyManager } from './components/FamilyManager';
 import { DecisionFlow } from './components/DecisionFlow';
 import { AuthScreen } from './components/AuthScreen';
-import { saveSession, subscribeToSync, logout } from './services/storage';
+import { saveSession, subscribeToSync, logout, loadLastSession } from './services/storage';
 import { LogOut, CloudSun, Sparkles, ArrowRight, Signal, Wifi, Battery } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -12,7 +12,20 @@ const App: React.FC = () => {
   const [session, setSession] = useState<FamilySession | null>(null);
   const [isDecisionActive, setIsDecisionActive] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   
+  // Auto Login on Mount
+  useEffect(() => {
+    const init = async () => {
+        const lastSession = await loadLastSession();
+        if (lastSession) {
+            setSession(lastSession);
+        }
+        setIsInitializing(false);
+    };
+    init();
+  }, []);
+
   // Sync Subscription
   useEffect(() => {
     if (session) {
@@ -53,6 +66,14 @@ const App: React.FC = () => {
       </div>
   );
 
+  if (isInitializing) {
+      return (
+        <div className="min-h-[100dvh] bg-white flex items-center justify-center">
+            <div className="animate-spin w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full"></div>
+        </div>
+      );
+  }
+
   return (
     <div className="min-h-[100dvh] bg-gray-100 flex items-center justify-center font-sans overflow-hidden">
         
@@ -63,8 +84,6 @@ const App: React.FC = () => {
 
         {/* 
             PHONE FRAME CONTAINER
-            - Mobile: Full width/height (100dvh), no border.
-            - Desktop: Fixed width (400px), rounded corners, heavy border, shadow.
         */}
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
