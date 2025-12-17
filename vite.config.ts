@@ -2,6 +2,8 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+// Fix: Import process explicitly to resolve the type error where cwd() was missing on the global process shim.
+import process from 'node:process';
 
 export default defineConfig(({ mode }) => {
   // Load env from file (.env) or system (Docker ENV)

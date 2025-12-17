@@ -12,7 +12,6 @@ const fs = require('fs');
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'families.db');
-// We use the same API Key for simplicity
 const GOOGLE_API_KEY = process.env.API_KEY || process.env.VITE_API_KEY;
 
 if (!fs.existsSync(DATA_DIR)){
@@ -28,7 +27,14 @@ db.exec(`
     id TEXT PRIMARY KEY,
     data TEXT NOT NULL,
     last_updated INTEGER
-  )
+  );
+  
+  CREATE TABLE IF NOT EXISTS invites (
+    code TEXT PRIMARY KEY,
+    familyId TEXT NOT NULL,
+    familyKey TEXT NOT NULL,
+    created_at INTEGER
+  );
 `);
 
 // --- Express Setup ---
@@ -36,7 +42,6 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 
-// Serve Static Frontend Files
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
@@ -86,116 +91,75 @@ const broadcastUpdate = (familyId) => {
 
 app.get('/api/health', (req, res) => res.send('FamEats Sync Server Running'));
 
-// --- GOOGLE PLACES PROXY ---
-app.post('/api/places/search', async (req, res) => {
-    if (!GOOGLE_API_KEY) {
-        console.error("CRITICAL: API Key missing in server environment");
-        return res.status(500).json({ error: "Server configuration error: API Key missing" });
-    }
+// Create or Get Invite Code
+app.post('/api/invite', (req, res) => {
+    const { familyId, familyKey } = req.body;
+    if (!familyId || !familyKey) return res.status(400).json({ error: 'Missing credentials' });
 
-    const { query, latitude, longitude, type, minRating, limit } = req.body;
+    // Check if an invite already exists for this family
+    const existing = db.prepare('SELECT code FROM invites WHERE familyId = ?').get(familyId);
+    if (existing) return res.json({ code: existing.code });
 
+    // Generate 6-digit numeric code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     try {
-        const requestBody = {
-            textQuery: query,
-            maxResultCount: limit || 5,
-        };
+        db.prepare('INSERT INTO invites (code, familyId, familyKey, created_at) VALUES (?, ?, ?, ?)').run(code, familyId, familyKey, Date.now());
+        res.json({ code });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to create invite' });
+    }
+});
 
-        // Add location bias if coordinates exist
+// Resolve Invite Code
+app.get('/api/invite/:code', (req, res) => {
+    const invite = db.prepare('SELECT familyId, familyKey FROM invites WHERE code = ?').get(req.params.code);
+    if (invite) {
+        res.json(invite);
+    } else {
+        res.status(404).json({ error: 'Invite code expired or invalid' });
+    }
+});
+
+app.post('/api/places/search', async (req, res) => {
+    if (!GOOGLE_API_KEY) return res.status(500).json({ error: "Server configuration error" });
+    const { query, latitude, longitude, limit, minRating } = req.body;
+    try {
+        const requestBody = { textQuery: query, maxResultCount: limit || 5 };
         if (latitude && longitude) {
-            requestBody.locationBias = {
-                circle: {
-                    center: { latitude, longitude },
-                    radius: 5000.0 // 5km radius bias
-                }
-            };
+            requestBody.locationBias = { circle: { center: { latitude, longitude }, radius: 5000.0 } };
         }
-        
-        if (minRating) {
-            requestBody.minRating = minRating;
-        }
-
-        console.log(`[Proxy] Searching Places: ${query}`);
+        if (minRating) requestBody.minRating = minRating;
 
         const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Goog-Api-Key': GOOGLE_API_KEY,
-                // Request specific fields to save data/latency
-                'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri,places.primaryType,places.types'
+                'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri,places.primaryType'
             },
             body: JSON.stringify(requestBody)
         });
-
-        if (!response.ok) {
-            const errText = await response.text();
-            console.error(`[Proxy] Google API Error (${response.status}):`, errText);
-            return res.status(response.status).json({ error: "Maps API Error", details: errText });
-        }
-
         const data = await response.json();
-        console.log(`[Proxy] Success. Found ${data.places ? data.places.length : 0} results.`);
         res.json(data.places || []);
-
     } catch (error) {
-        console.error("[Proxy] Internal Server Error:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
 app.get('/api/family/:id', (req, res) => {
-  try {
-    const stmt = db.prepare('SELECT data, last_updated FROM families WHERE id = ?');
-    const result = stmt.get(req.params.id);
-    
-    if (result) {
-      res.json({ data: result.data, lastUpdated: result.last_updated });
-    } else {
-      res.status(404).json({ error: 'Family not found' });
-    }
-  } catch (err) {
-    res.status(500).json({ error: "Database error" });
-  }
+  const result = db.prepare('SELECT data, last_updated FROM families WHERE id = ?').get(req.params.id);
+  if (result) res.json({ data: result.data, lastUpdated: result.last_updated });
+  else res.status(404).json({ error: 'Family not found' });
 });
 
 app.post('/api/family', (req, res) => {
-  try {
-    const { familyId, data } = req.body;
-    if (!familyId || !data) return res.status(400).json({ error: 'Missing familyId or data' });
-
-    const stmt = db.prepare(`
-      INSERT INTO families (id, data, last_updated) 
-      VALUES (?, ?, ?) 
-      ON CONFLICT(id) DO UPDATE SET 
-      data = excluded.data, 
-      last_updated = excluded.last_updated
-    `);
-
-    const info = stmt.run(familyId, data, Date.now());
-    broadcastUpdate(familyId);
-    res.json({ success: true, updated: info.changes });
-  } catch (err) {
-    res.status(500).json({ error: "Database error" });
-  }
-});
-
-app.get('*', (req, res) => {
-    const index = path.join(__dirname, 'public', 'index.html');
-    if (fs.existsSync(index)) {
-        res.sendFile(index);
-    } else {
-        res.send('FamEats API Running. Frontend build not found in /public.');
-    }
+  const { familyId, data } = req.body;
+  if (!familyId || !data) return res.status(400).json({ error: 'Missing data' });
+  db.prepare('INSERT INTO families (id, data, last_updated) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, last_updated = excluded.last_updated').run(familyId, data, Date.now());
+  broadcastUpdate(familyId);
+  res.json({ success: true });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
-  
-  if (!GOOGLE_API_KEY) {
-      console.warn("WARNING: API_KEY is missing. Maps Proxy will fail.");
-  } else {
-      const masked = GOOGLE_API_KEY.substring(0, 4) + '...';
-      console.log(`API Key configured: ${masked}`);
-  }
 });
