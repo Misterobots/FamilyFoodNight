@@ -197,7 +197,7 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                                 </motion.button>
                             ))}
                         </div>
-                        <div className="mt-auto">
+                        <div className="mt-auto space-y-3">
                             <motion.button 
                                 whileTap={{ scale: 0.95 }}
                                 disabled={selectedMemberIds.size === 0} 
@@ -206,6 +206,12 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                             >
                                 Continue <ArrowRight size={22} />
                             </motion.button>
+                            <button 
+                                onClick={onCancel}
+                                className="w-full py-4 text-gray-500 font-bold text-sm hover:text-gray-800 transition-colors"
+                            >
+                                Cancel & Go Back
+                            </button>
                         </div>
                     </motion.div>
                 )}
