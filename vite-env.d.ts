@@ -1,5 +1,15 @@
 
-// Fix: Use any for process to avoid redeclaration conflicts with global Node.js types 
-// that are present during build/config phases, while still allowing access to 
-// process.env.API_KEY in the application code.
-declare var process: any;
+// Fix: Instead of redeclaring 'process' as a global variable which may conflict 
+// with existing environment types, we augment the NodeJS namespace.
+declare namespace NodeJS {
+  interface ProcessEnv {
+    API_KEY: string;
+  }
+}
+
+// Ensure the project recognizes process.env even if global Node types are missing
+interface Process {
+  env: {
+    API_KEY: string;
+  };
+}

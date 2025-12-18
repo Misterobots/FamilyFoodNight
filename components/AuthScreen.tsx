@@ -1,19 +1,20 @@
 
 import React, { useState, useEffect } from 'react';
-import { ChefHat, ArrowRight, Key, Smartphone, Wifi, Check, Server } from 'lucide-react';
+import { ChefHat, ArrowRight, Key, Smartphone, Wifi, Check, Server, PartyPopper } from 'lucide-react';
 import { createNewFamily, joinWithInviteCode, setServerUrl, getServerUrl } from '../services/storage';
 import { FamilySession } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AuthScreenProps {
   onJoin: (session: FamilySession) => void;
+  initialInvite?: string | null;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin }) => {
-  const [mode, setMode] = useState<'create' | 'join' | 'settings'>('create');
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin, initialInvite }) => {
+  const [mode, setMode] = useState<'create' | 'join' | 'settings'>(initialInvite ? 'join' : 'create');
   const [name, setName] = useState('');
   const [familyName, setFamilyName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+  const [inviteCode, setInviteCode] = useState(initialInvite || '');
   const [serverAddress, setServerAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -114,9 +115,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin }) => {
 
             {mode === 'join' && (
                 <motion.form key="join" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} onSubmit={handleJoin} className="space-y-6">
+                    {initialInvite && (
+                        <div className="bg-orange-50 p-4 rounded-2xl flex items-center gap-3 border border-orange-100 mb-2">
+                            <div className="bg-orange-500 text-white p-2 rounded-xl">
+                                <PartyPopper size={20} />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-orange-900 leading-tight">You're Invited!</p>
+                                <p className="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Just enter your name to join</p>
+                            </div>
+                        </div>
+                    )}
                     <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Your Name</label>
-                        <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full py-3 px-0 bg-transparent border-b-2 border-gray-100 focus:border-orange-500 outline-none font-bold text-xl text-gray-900 transition-colors" placeholder="e.g. Leo" />
+                        <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full py-3 px-0 bg-transparent border-b-2 border-gray-100 focus:border-orange-500 outline-none font-bold text-xl text-gray-900 transition-colors" placeholder="e.g. Leo" autoFocus />
                     </div>
                     <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Invite Code</label>

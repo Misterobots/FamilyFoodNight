@@ -72,8 +72,9 @@ export const getCuisineConsensus = async (members: FamilyMember[]): Promise<{ op
         Return exactly 4 options.
         `;
 
+        // Using gemini-3-flash-preview for the consensus task as it is optimized for basic text reasoning and categorization.
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: 'gemini-3-flash-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
