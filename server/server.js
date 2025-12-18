@@ -89,7 +89,7 @@ const broadcastUpdate = (familyId) => {
 
 // --- API Routes ---
 
-app.get('/api/health', (req, res) => res.send('FamEats Sync Server Running'));
+app.get('/api/health', (req, res) => res.send('Family Food Night Sync Server Running'));
 
 // Create or Get Invite Code
 app.post('/api/invite', (req, res) => {

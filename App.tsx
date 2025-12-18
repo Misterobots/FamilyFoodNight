@@ -13,18 +13,10 @@ const App: React.FC = () => {
   const [isDecisionActive, setIsDecisionActive] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [urlInviteCode, setUrlInviteCode] = useState<string | null>(null);
   
-  // Auto Login and URL Param Check
+  // Auto Login on Mount
   useEffect(() => {
     const init = async () => {
-        // Check URL for invite code
-        const params = new URLSearchParams(window.location.search);
-        const invite = params.get('invite');
-        if (invite) {
-            setUrlInviteCode(invite);
-        }
-
         const lastSession = await loadLastSession();
         if (lastSession) {
             setSession(lastSession);
@@ -58,8 +50,6 @@ const App: React.FC = () => {
       logout();
       setSession(null);
       setIsDecisionActive(false);
-      // Clear invite code on logout to prevent accidental re-joining
-      window.history.replaceState({}, document.title, window.location.pathname);
   };
 
   // Status Bar Component for the "Phone" look
@@ -92,11 +82,15 @@ const App: React.FC = () => {
             <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px]"></div>
         </div>
 
+        {/* 
+            PHONE FRAME CONTAINER
+        */}
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="w-full h-[100dvh] md:w-[400px] md:h-[850px] bg-white md:rounded-[3rem] md:border-[14px] md:border-gray-900 md:shadow-2xl relative overflow-hidden flex flex-col z-10"
         >
+            {/* Notch (Desktop Only) */}
             <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-gray-900 rounded-b-2xl z-50"></div>
 
             <StatusBar />
@@ -111,7 +105,7 @@ const App: React.FC = () => {
                             exit={{ opacity: 0, x: -20 }}
                             className="h-full flex flex-col"
                         >
-                            <AuthScreen onJoin={setSession} initialInvite={urlInviteCode} />
+                            <AuthScreen onJoin={setSession} />
                         </motion.div>
                     ) : isDecisionActive ? (
                         <motion.div 
@@ -134,9 +128,10 @@ const App: React.FC = () => {
                             animate={{ opacity: 1 }}
                             className="h-full flex flex-col relative"
                         >
+                            {/* App Header */}
                             <header className="px-6 py-4 flex items-center justify-between bg-white sticky top-0 z-20">
                                 <div>
-                                    <h1 className="text-2xl font-heading font-black text-gray-900 tracking-tight">FamEats</h1>
+                                    <h1 className="text-2xl font-heading font-black text-gray-900 tracking-tight leading-tight">Family Food Night</h1>
                                     <p className="text-xs font-bold text-gray-400 tracking-wider uppercase flex items-center gap-1">
                                         <CloudSun size={12}/> {session.familyName}
                                     </p>
@@ -149,7 +144,10 @@ const App: React.FC = () => {
                                 </button>
                             </header>
 
+                            {/* Scrollable Content */}
                             <div className="flex-1 overflow-y-auto px-6 pb-24 no-scrollbar space-y-8">
+                                
+                                {/* Hero Action */}
                                 <motion.button 
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => setIsDecisionActive(true)}
@@ -179,6 +177,7 @@ const App: React.FC = () => {
                                 />
                             </div>
 
+                            {/* Sync Status Overlay */}
                             <div className="absolute bottom-6 left-0 right-0 flex justify-center pointer-events-none pb-safe">
                                 <motion.div 
                                     animate={{ 
@@ -193,6 +192,7 @@ const App: React.FC = () => {
                                     </span>
                                 </motion.div>
                             </div>
+
                         </motion.div>
                     )}
                 </AnimatePresence>

@@ -79,7 +79,9 @@ export const saveSession = async (session: FamilySession) => {
 };
 
 export const createNewFamily = async (familyName: string, userName: string): Promise<FamilySession> => {
-  const familyId = Math.random().toString(36).substr(2, 9).toUpperCase();
+  // Use the Family Name as the ID (sanitized: Uppercase, hyphenated, trimmed)
+  const sanitizedName = familyName.trim().toUpperCase().replace(/\s+/g, '-');
+  const familyId = sanitizedName || 'MY-FAMILY';
   const familyKey = generateFamilyCode();
 
   const currentUser: FamilyMember = {

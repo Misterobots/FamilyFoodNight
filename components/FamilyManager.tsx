@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { FamilyMember, Restaurant, FamilySession } from '../types';
-import { Plus, Trash2, Share2, Copy, Check, Smartphone, X, UserPlus, Users, Edit2, Save, MapPin, Search, Loader2, Sparkles, Link } from 'lucide-react';
+import { Plus, Trash2, Share2, Copy, Check, Smartphone, X, UserPlus, Users, Edit2, Save, MapPin, Search, Loader2, Sparkles } from 'lucide-react';
 import { getInviteCode } from '../services/storage';
 import { searchPlace } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +23,10 @@ const AVATAR_COLORS = [
   'bg-cyan-100 text-cyan-600',
 ];
 
+const DIETARY_OPTIONS = [ "Gluten Free", "Vegetarian", "Vegan", "Dairy Free", "Nut Allergy", "Shellfish Allergy", "Halal", "Kosher", "Keto" ];
+const CUISINE_OPTIONS = [ "Italian", "Mexican", "Chinese", "Japanese", "Thai", "Indian", "Burgers", "Pizza", "Mediterranean", "Steakhouse", "Seafood", "BBQ" ];
+const FLAVOR_OPTIONS = [ "Spicy", "Sweet", "Savory", "Umami", "Crunchy", "Comfort Food", "Healthy", "Light", "Rich", "Tangy" ];
+
 export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMembers, familyId, familyKey, fullSession }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -37,9 +41,24 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const [formFlavors, setFormFlavors] = useState<string[]>([]);
   const [formFavorites, setFormFavorites] = useState<Restaurant[]>([]);
 
+  // Search State
+  const [placeQuery, setPlaceQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<Restaurant[]>([]);
+  const [searchLocation, setSearchLocation] = useState<{latitude: number, longitude: number} | null>(null);
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (p) => setSearchLocation({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+        () => {}
+      );
+    }
+  }, []);
+
   const resetForm = () => {
     setFormName(''); setFormDietary([]); setFormCuisines([]); setFormFlavors([]); setFormFavorites([]);
-    setIsAdding(false); setEditingId(null);
+    setPlaceQuery(''); setSearchResults([]); setIsAdding(false); setEditingId(null);
   };
 
   const startAdding = () => { resetForm(); setIsAdding(true); };
@@ -67,31 +86,12 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       setIsGenerating(false);
   };
 
-  const handleShare = async () => {
-      if (!inviteCode) return;
-      
-      const shareUrl = `${window.location.origin}${window.location.pathname}?invite=${inviteCode}`;
-      const shareData = {
-          title: 'Join our FamEats!',
-          text: `Join the ${fullSession.familyName} on FamEats to decide where to eat!`,
-          url: shareUrl,
-      };
-
-      if (navigator.share) {
-          try {
-              await navigator.share(shareData);
-          } catch (e) {
-              copyInvite(shareUrl);
-          }
-      } else {
-          copyInvite(shareUrl);
+  const copyInvite = () => {
+      if(inviteCode) {
+          navigator.clipboard.writeText(inviteCode);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
       }
-  };
-
-  const copyInvite = (url: string) => {
-      navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -103,32 +103,28 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                 <div>
                     <h3 className="text-xl font-heading font-bold flex items-center gap-2 mb-1">
                         <Smartphone size={20} className="text-orange-400" /> 
-                        Magic Invite
+                        Sync Devices
                     </h3>
-                    <p className="text-gray-400 text-xs">Share a link to add family members instantly.</p>
+                    <p className="text-gray-400 text-xs">Join your family with a short code.</p>
                 </div>
+                {!inviteCode && (
+                    <button onClick={handleInviteCode} disabled={isGenerating} className="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-colors">
+                        {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Share2 size={18} />}
+                    </button>
+                )}
             </div>
             
             <div className="w-full">
                  {!inviteCode ? (
-                     <button onClick={handleInviteCode} disabled={isGenerating} className="w-full bg-white/5 border border-white/10 p-4 rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-gray-400 hover:bg-white/10 transition-all">
-                        {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <><Sparkles size={16} /> Generate Invite Link</>}
+                     <button onClick={handleInviteCode} className="w-full bg-white/5 border border-white/10 p-4 rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-gray-400 hover:bg-white/10 transition-all">
+                        <Sparkles size={16} /> Generate Invite Code
                      </button>
                  ) : (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white/10 p-5 rounded-xl flex flex-col items-center gap-4 backdrop-blur-md border border-white/20">
-                         <div className="flex items-center gap-8">
-                             <div className="text-center">
-                                <div className="text-[9px] text-gray-400 uppercase tracking-widest font-black mb-1">Code</div>
-                                <div className="text-2xl font-black text-orange-400 tracking-wider font-mono">{inviteCode}</div>
-                             </div>
-                             <div className="w-[1px] h-8 bg-white/10"></div>
-                             <div className="text-center">
-                                <div className="text-[9px] text-gray-400 uppercase tracking-widest font-black mb-1">Status</div>
-                                <div className="text-xs font-bold text-green-400">Ready to Share</div>
-                             </div>
-                         </div>
-                         <button onClick={handleShare} className="w-full flex items-center justify-center gap-2 text-sm font-black bg-orange-500 py-4 rounded-2xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-900/20 active:scale-95">
-                            {copied ? <><Check size={18}/> Link Copied!</> : <><Share2 size={18}/> Share Invite Link</>}
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white/10 p-4 rounded-xl flex flex-col items-center gap-3 backdrop-blur-md border border-white/20">
+                         <div className="text-[10px] text-gray-400 uppercase tracking-widest font-black">Invite Code</div>
+                         <div className="text-4xl font-black text-orange-400 tracking-[0.3em] font-mono">{inviteCode}</div>
+                         <button onClick={copyInvite} className="flex items-center gap-2 text-xs font-bold bg-white/10 px-4 py-2 rounded-full hover:bg-white/20 transition-colors">
+                            {copied ? <><Check size={14}/> Copied</> : <><Copy size={14}/> Copy Code</>}
                          </button>
                     </motion.div>
                  )}

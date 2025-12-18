@@ -1,20 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { ChefHat, ArrowRight, Key, Smartphone, Wifi, Check, Server, PartyPopper } from 'lucide-react';
+import { ChefHat, ArrowRight, Key, Smartphone, Wifi, Check, Server } from 'lucide-react';
 import { createNewFamily, joinWithInviteCode, setServerUrl, getServerUrl } from '../services/storage';
 import { FamilySession } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AuthScreenProps {
   onJoin: (session: FamilySession) => void;
-  initialInvite?: string | null;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin, initialInvite }) => {
-  const [mode, setMode] = useState<'create' | 'join' | 'settings'>(initialInvite ? 'join' : 'create');
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin }) => {
+  const [mode, setMode] = useState<'create' | 'join' | 'settings'>('create');
   const [name, setName] = useState('');
   const [familyName, setFamilyName] = useState('');
-  const [inviteCode, setInviteCode] = useState(initialInvite || '');
+  const [inviteCode, setInviteCode] = useState('');
   const [serverAddress, setServerAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,8 +69,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin, initialInvite })
         <div className="w-20 h-20 bg-orange-500 rounded-[2rem] flex items-center justify-center text-white mx-auto mb-6 shadow-xl shadow-orange-200">
              <ChefHat size={40} />
         </div>
-        <h1 className="text-3xl font-heading font-black text-gray-900 tracking-tight mb-2">FamEats</h1>
-        <p className="text-gray-400 text-sm font-bold tracking-wide uppercase">Secure Family Dining</p>
+        <h1 className="text-3xl font-heading font-black text-gray-900 tracking-tight mb-2 leading-none">Family Food Night</h1>
+        <p className="text-gray-400 text-[10px] font-bold tracking-wide uppercase">Secure Family Dining Assistant</p>
       </div>
 
       {mode !== 'settings' && (
@@ -108,27 +107,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin, initialInvite })
                         <input required value={familyName} onChange={(e) => setFamilyName(e.target.value)} className="w-full py-3 px-0 bg-transparent border-b-2 border-gray-100 focus:border-orange-500 outline-none font-bold text-xl text-gray-900 transition-colors" placeholder="e.g. The Millers" />
                     </div>
                     <motion.button whileTap={{ scale: 0.98 }} type="submit" disabled={isLoading} className="w-full bg-gray-900 text-white py-5 rounded-[1.5rem] font-bold text-lg hover:bg-black transition-all flex items-center justify-center gap-2 mt-8 shadow-xl">
-                        {isLoading ? 'Creating...' : <>Start Kitchen <ArrowRight size={20} /></>}
+                        {isLoading ? 'Creating...' : <>Start Night <ArrowRight size={20} /></>}
                     </motion.button>
                 </motion.form>
             )}
 
             {mode === 'join' && (
                 <motion.form key="join" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} onSubmit={handleJoin} className="space-y-6">
-                    {initialInvite && (
-                        <div className="bg-orange-50 p-4 rounded-2xl flex items-center gap-3 border border-orange-100 mb-2">
-                            <div className="bg-orange-500 text-white p-2 rounded-xl">
-                                <PartyPopper size={20} />
-                            </div>
-                            <div>
-                                <p className="text-sm font-bold text-orange-900 leading-tight">You're Invited!</p>
-                                <p className="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Just enter your name to join</p>
-                            </div>
-                        </div>
-                    )}
                     <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Your Name</label>
-                        <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full py-3 px-0 bg-transparent border-b-2 border-gray-100 focus:border-orange-500 outline-none font-bold text-xl text-gray-900 transition-colors" placeholder="e.g. Leo" autoFocus />
+                        <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full py-3 px-0 bg-transparent border-b-2 border-gray-100 focus:border-orange-500 outline-none font-bold text-xl text-gray-900 transition-colors" placeholder="e.g. Leo" />
                     </div>
                     <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Invite Code</label>
@@ -136,7 +124,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin, initialInvite })
                     </div>
                     {error && <div className="text-red-500 text-xs font-bold text-center bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
                     <motion.button whileTap={{ scale: 0.98 }} type="submit" disabled={isLoading} className="w-full bg-orange-600 text-white py-5 rounded-[1.5rem] font-bold text-lg hover:bg-orange-700 transition-all flex items-center justify-center gap-2 mt-8 shadow-xl shadow-orange-100">
-                         {isLoading ? 'Joining...' : <>Join Family <Smartphone size={20} /></>}
+                         {isLoading ? 'Joining...' : <>Join Night <Smartphone size={20} /></>}
                     </motion.button>
                 </motion.form>
             )}
@@ -148,7 +136,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onJoin, initialInvite })
                         <h2 className="font-bold text-lg">Server Setup</h2>
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Server URL</label>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Sync Server URL</label>
                         <input type="url" value={serverAddress} onChange={(e) => setServerAddress(e.target.value)} className="w-full p-4 bg-white border-2 border-gray-100 rounded-2xl focus:border-orange-500 outline-none font-mono text-xs text-gray-800 transition-colors" placeholder="https://fameats.shivelymedia.com" />
                     </div>
                     <div className="flex gap-3 pt-2">
