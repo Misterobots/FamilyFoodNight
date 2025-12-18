@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { FamilyMember, Restaurant, FamilySession } from '../types';
-import { Plus, Trash2, Share2, Copy, Check, Smartphone, X, UserPlus, Users, Edit2, Save, MapPin, Search, Loader2, Sparkles } from 'lucide-react';
+import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { getInviteCode } from '../services/storage';
-import { searchPlace } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FamilyManagerProps {
@@ -23,16 +22,13 @@ const AVATAR_COLORS = [
   'bg-cyan-100 text-cyan-600',
 ];
 
-const DIETARY_OPTIONS = [ "Gluten Free", "Vegetarian", "Vegan", "Dairy Free", "Nut Allergy", "Shellfish Allergy", "Halal", "Kosher", "Keto" ];
-const CUISINE_OPTIONS = [ "Italian", "Mexican", "Chinese", "Japanese", "Thai", "Indian", "Burgers", "Pizza", "Mediterranean", "Steakhouse", "Seafood", "BBQ" ];
-const FLAVOR_OPTIONS = [ "Spicy", "Sweet", "Savory", "Umami", "Crunchy", "Comfort Food", "Healthy", "Light", "Rich", "Tangy" ];
-
 export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMembers, familyId, familyKey, fullSession }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -41,24 +37,9 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const [formFlavors, setFormFlavors] = useState<string[]>([]);
   const [formFavorites, setFormFavorites] = useState<Restaurant[]>([]);
 
-  // Search State
-  const [placeQuery, setPlaceQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<Restaurant[]>([]);
-  const [searchLocation, setSearchLocation] = useState<{latitude: number, longitude: number} | null>(null);
-
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (p) => setSearchLocation({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
-        () => {}
-      );
-    }
-  }, []);
-
   const resetForm = () => {
     setFormName(''); setFormDietary([]); setFormCuisines([]); setFormFlavors([]); setFormFavorites([]);
-    setPlaceQuery(''); setSearchResults([]); setIsAdding(false); setEditingId(null);
+    setIsAdding(false); setEditingId(null);
   };
 
   const startAdding = () => { resetForm(); setIsAdding(true); };
@@ -81,9 +62,21 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
 
   const handleInviteCode = async () => {
       setIsGenerating(true);
-      const code = await getInviteCode(familyId, familyKey);
-      setInviteCode(code);
-      setIsGenerating(false);
+      setError(null);
+      try {
+          const code = await getInviteCode(familyId, familyKey);
+          if (code === "Offline") {
+              setError("Server is currently unreachable. Check your settings.");
+              setInviteCode(null);
+          } else {
+              setInviteCode(code);
+              setError(null);
+          }
+      } catch (e) {
+          setError("Connection failed. Please try again.");
+      } finally {
+          setIsGenerating(false);
+      }
   };
 
   const copyInvite = () => {
@@ -105,23 +98,45 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                         <Smartphone size={20} className="text-orange-400" /> 
                         Sync Devices
                     </h3>
-                    <p className="text-gray-400 text-xs">Join your family with a short code.</p>
+                    <p className="text-gray-400 text-xs">Invite family to join your night.</p>
                 </div>
                 {!inviteCode && (
-                    <button onClick={handleInviteCode} disabled={isGenerating} className="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-colors">
+                    <button 
+                        onClick={handleInviteCode} 
+                        disabled={isGenerating} 
+                        className="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-colors disabled:opacity-50"
+                    >
                         {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Share2 size={18} />}
                     </button>
                 )}
             </div>
             
             <div className="w-full">
-                 {!inviteCode ? (
-                     <button onClick={handleInviteCode} className="w-full bg-white/5 border border-white/10 p-4 rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-gray-400 hover:bg-white/10 transition-all">
-                        <Sparkles size={16} /> Generate Invite Code
+                 {error ? (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex flex-col gap-2">
+                        <div className="flex items-center gap-2 text-red-400">
+                            <AlertCircle size={16} />
+                            <span className="text-xs font-bold leading-tight">{error}</span>
+                        </div>
+                        <button 
+                            onClick={handleInviteCode} 
+                            className="text-[10px] font-black bg-white/10 self-end px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors flex items-center gap-1"
+                        >
+                            <RefreshCw size={10} /> RETRY
+                        </button>
+                    </motion.div>
+                 ) : !inviteCode ? (
+                     <button 
+                        onClick={handleInviteCode} 
+                        disabled={isGenerating}
+                        className="w-full bg-white/5 border border-white/10 p-4 rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-gray-400 hover:bg-white/10 transition-all disabled:opacity-50"
+                     >
+                        {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} 
+                        {isGenerating ? 'Generating...' : 'Generate Invite Code'}
                      </button>
                  ) : (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white/10 p-4 rounded-xl flex flex-col items-center gap-3 backdrop-blur-md border border-white/20">
-                         <div className="text-[10px] text-gray-400 uppercase tracking-widest font-black">Invite Code</div>
+                         <div className="text-[10px] text-gray-400 uppercase tracking-widest font-black">Family Access Code</div>
                          <div className="text-4xl font-black text-orange-400 tracking-[0.3em] font-mono">{inviteCode}</div>
                          <button onClick={copyInvite} className="flex items-center gap-2 text-xs font-bold bg-white/10 px-4 py-2 rounded-full hover:bg-white/20 transition-colors">
                             {copied ? <><Check size={14}/> Copied</> : <><Copy size={14}/> Copy Code</>}
@@ -149,7 +164,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="p-6 rounded-[2rem] shadow-xl border-2 border-orange-500 bg-white">
                         <div className="mb-6">
                             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-1">Name</label>
-                            <input value={formName} onChange={e => setFormName(e.target.value)} className="w-full text-2xl font-black border-b-2 border-gray-100 focus:border-orange-500 outline-none py-2" placeholder="Member Name" />
+                            <input value={formName} onChange={e => setFormName(e.target.value)} className="w-full text-2xl font-black border-b-2 border-gray-100 focus:border-orange-500 outline-none py-2" placeholder="e.g. Grandma" />
                         </div>
                         <div className="flex gap-3">
                             <button onClick={saveMember} className="flex-1 bg-gray-900 text-white py-4 rounded-2xl font-bold text-sm hover:bg-black transition-colors shadow-lg">Save Profile</button>
