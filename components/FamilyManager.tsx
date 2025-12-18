@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { FamilyMember, Restaurant, FamilySession } from '../types';
 import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus } from 'lucide-react';
@@ -65,7 +64,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       dietaryRestrictions: formDietary, 
       cuisinePreferences: formCuisines, 
       flavorPreferences: formFlavors, 
-      favorites: [] // Simplified for now
+      favorites: [] 
     };
 
     if (editingId) {
@@ -73,7 +72,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
     } else {
       setMembers([...members, { 
         ...memberData,
-        id: Date.now().toString(), 
+        id: `mem-${Date.now()}`, 
         avatarColor: AVATAR_COLORS[members.length % AVATAR_COLORS.length] 
       }]);
     }
@@ -106,15 +105,15 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       setError(null);
       try {
           const code = await getInviteCode(familyId, familyKey);
-          if (code === "Offline") {
-              setError("Server unreachable. Check your settings.");
+          if (code === "SERVER_ERROR") {
+              setError("Cloud sync unreachable. Using local mode.");
               setInviteCode(null);
           } else {
               setInviteCode(code);
               setError(null);
           }
       } catch (e) {
-          setError("Connection failed. Please try again.");
+          setError("Failed to connect to sync server.");
       } finally {
           setIsGenerating(false);
       }
@@ -123,7 +122,8 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const TagSection = ({ label, tags, tempValue, setTempValue, onAdd, onRemove, colorClass, placeholder }: any) => (
     <div className="space-y-2">
         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{label}</label>
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap gap-2 mb-2 min-h-[32px]">
+            {tags.length === 0 && <span className="text-xs text-gray-300 italic py-1 px-1">None added yet</span>}
             {tags.map((tag: string) => (
                 <motion.span 
                     initial={{ scale: 0.8, opacity: 0 }} 
@@ -166,7 +166,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                         <Smartphone size={20} className="text-orange-400" /> 
                         Sync Devices
                     </h3>
-                    <p className="text-gray-400 text-xs">Invite family to join your night.</p>
+                    <p className="text-gray-400 text-xs">Invite family members to join.</p>
                 </div>
                 {!inviteCode && (
                     <button onClick={handleInviteCode} disabled={isGenerating} className="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-colors disabled:opacity-50">
@@ -177,19 +177,19 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
             
             <div className="w-full">
                  {error ? (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-red-400">
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl flex flex-col gap-2">
+                        <div className="flex items-center gap-2 text-orange-400">
                             <AlertCircle size={16} />
                             <span className="text-xs font-bold leading-tight">{error}</span>
                         </div>
                         <button onClick={handleInviteCode} className="text-[10px] font-black bg-white/10 self-end px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors flex items-center gap-1">
-                            <RefreshCw size={10} /> RETRY
+                            <RefreshCw size={10} /> RETRY SYNC
                         </button>
                     </motion.div>
                  ) : !inviteCode ? (
                      <button onClick={handleInviteCode} disabled={isGenerating} className="w-full bg-white/5 border border-white/10 p-4 rounded-xl flex items-center justify-center gap-2 text-sm font-bold text-gray-400 hover:bg-white/10 transition-all disabled:opacity-50">
                         {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} 
-                        {isGenerating ? 'Generating...' : 'Generate Invite Code'}
+                        {isGenerating ? 'Connecting to Cloud...' : 'Generate Invite Code'}
                      </button>
                  ) : (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white/10 p-4 rounded-xl flex flex-col items-center gap-3 backdrop-blur-md border border-white/20">
@@ -205,7 +205,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       </div>
 
       {/* Crew List & Editor */}
-      <div>
+      <div className="relative">
           <div className="flex justify-between items-end mb-6 px-2">
             <h2 className="text-2xl font-heading font-bold text-gray-900 flex items-center gap-2">
                 <Users size={24} className="text-gray-400" /> The Crew
@@ -228,7 +228,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                     >
                         <div className="flex justify-between items-center">
                             <h3 className="text-xl font-black text-gray-900">{editingId ? 'Edit Profile' : 'New Profile'}</h3>
-                            <button onClick={resetForm} className="text-gray-400"><X size={20}/></button>
+                            <button onClick={resetForm} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={24}/></button>
                         </div>
 
                         <div>
@@ -290,9 +290,9 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                     {member.isCurrentUser && <span className="bg-orange-100 text-orange-600 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">You</span>}
                                 </h3>
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                    {member.dietaryRestrictions?.slice(0, 1).map(t => <span key={t} className="text-[9px] font-bold text-red-500 uppercase tracking-tighter">No {t}</span>)}
+                                    {member.dietaryRestrictions?.length > 0 && <span className="text-[9px] font-bold text-red-500 uppercase tracking-tighter">Dietary Needs</span>}
                                     {member.cuisinePreferences?.slice(0, 2).map(t => <span key={t} className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">{t}</span>)}
-                                    {(member.cuisinePreferences?.length > 2 || member.flavorPreferences?.length > 0) && <span className="text-[9px] font-bold text-gray-300">+{ (member.cuisinePreferences?.length || 0) + (member.flavorPreferences?.length || 0) - 2 } more</span>}
+                                    {((member.cuisinePreferences?.length || 0) > 2) && <span className="text-[9px] font-bold text-gray-300">+{ (member.cuisinePreferences?.length || 0) - 2 } more</span>}
                                 </div>
                             </div>
                         </div>

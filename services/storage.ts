@@ -1,4 +1,3 @@
-
 import { FamilyMember, FamilySession } from '../types';
 import { encryptData, decryptData, generateFamilyCode } from './crypto';
 
@@ -7,37 +6,38 @@ const SERVER_URL_KEY = 'foodnight_server_url';
 const CHANNEL_NAME = 'foodnight_sync_channel';
 const LAST_SESSION_KEY = 'foodnight_last_session';
 
-// Default server if none is set in localStorage
+// Default server used if none is configured
 const DEFAULT_SERVER_URL = 'https://fameats.shivelymedia.com';
 
 const localSyncChannel = new BroadcastChannel(CHANNEL_NAME);
 
 export const setServerUrl = (url: string | null) => {
-    if (url) {
-        const cleanUrl = url.replace(/\/$/, "");
+    if (url && url.trim().length > 0) {
+        const cleanUrl = url.trim().replace(/\/$/, "");
         localStorage.setItem(SERVER_URL_KEY, cleanUrl);
     } else {
         localStorage.removeItem(SERVER_URL_KEY);
     }
 };
 
-export const getServerUrl = (): string | null => {
-    // Return stored URL or the default fallback
-    return localStorage.getItem(SERVER_URL_KEY) || DEFAULT_SERVER_URL;
+export const getServerUrl = (): string => {
+    // We always fallback to the default server to ensure sync features are available by default
+    const stored = localStorage.getItem(SERVER_URL_KEY);
+    return (stored && stored.trim().length > 0) ? stored : DEFAULT_SERVER_URL;
 };
 
 export const getStoredSession = async (familyId: string, key: string): Promise<FamilySession | null> => {
   const serverUrl = getServerUrl();
   let encryptedData: string | null = null;
 
-  if (serverUrl) {
-      try {
-          const res = await fetch(`${serverUrl}/api/family/${familyId}`);
-          if (res.ok) {
-              const json = await res.json();
-              encryptedData = json.data;
-          }
-      } catch (e) { console.error("Server fetch failed", e); }
+  try {
+      const res = await fetch(`${serverUrl}/api/family/${familyId}`);
+      if (res.ok) {
+          const json = await res.json();
+          encryptedData = json.data;
+      }
+  } catch (e) { 
+      console.warn("Sync fetch failed, falling back to local storage", e); 
   }
 
   if (!encryptedData) {
@@ -69,14 +69,14 @@ export const saveSession = async (session: FamilySession) => {
 
   localSyncChannel.postMessage({ type: 'UPDATE', familyId: session.familyId });
 
-  if (serverUrl) {
-      try {
-          await fetch(`${serverUrl}/api/family`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ familyId: session.familyId, data: encrypted })
-          });
-      } catch (e) {}
+  try {
+      await fetch(`${serverUrl}/api/family`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ familyId: session.familyId, data: encrypted })
+      });
+  } catch (e) {
+      console.warn("Sync push failed", e);
   }
   
   return updatedSession;
@@ -84,7 +84,7 @@ export const saveSession = async (session: FamilySession) => {
 
 export const createNewFamily = async (familyName: string, userName: string): Promise<FamilySession> => {
   const sanitizedName = familyName.trim().toUpperCase().replace(/\s+/g, '-');
-  const familyId = sanitizedName || 'MY-FAMILY';
+  const familyId = sanitizedName || `FAM-${Date.now().toString(36)}`;
   const familyKey = generateFamilyCode();
 
   const currentUser: FamilyMember = {
@@ -113,8 +113,6 @@ export const createNewFamily = async (familyName: string, userName: string): Pro
 
 export const joinWithInviteCode = async (inviteCode: string, userName: string): Promise<FamilySession> => {
     const serverUrl = getServerUrl();
-    if (!serverUrl) throw new Error("Sync server not configured. Cannot join by code.");
-
     const res = await fetch(`${serverUrl}/api/invite/${inviteCode}`);
     if (!res.ok) throw new Error("Invalid or expired invite code.");
 
@@ -163,8 +161,6 @@ export const loadLastSession = async (): Promise<FamilySession | null> => {
 
 export const getInviteCode = async (familyId: string, familyKey: string): Promise<string> => {
     const serverUrl = getServerUrl();
-    if (!serverUrl) return "Offline";
-
     try {
         const res = await fetch(`${serverUrl}/api/invite`, {
             method: 'POST',
@@ -172,15 +168,12 @@ export const getInviteCode = async (familyId: string, familyKey: string): Promis
             body: JSON.stringify({ familyId, familyKey })
         });
         
-        if (!res.ok) {
-            throw new Error('Server unreachable');
-        }
-
+        if (!res.ok) throw new Error('Server unreachable');
         const data = await res.json();
         return data.code;
     } catch (e) {
         console.error("Invite code generation failed:", e);
-        return "Offline";
+        return "SERVER_ERROR";
     }
 };
 
@@ -195,28 +188,25 @@ export const subscribeToSync = (currentFamilyId: string, currentKey: string, onU
 
     let ws: WebSocket | null = null;
     const serverUrl = getServerUrl();
+    const wsUrl = serverUrl.replace(/^http/, 'ws');
+
+    const connectWs = () => {
+        try {
+            ws = new WebSocket(wsUrl);
+            ws.onopen = () => ws?.send(JSON.stringify({ type: 'JOIN', familyId: currentFamilyId }));
+            ws.onmessage = async (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'UPDATE' && msg.familyId === currentFamilyId) {
+                        const fresh = await getStoredSession(currentFamilyId, currentKey);
+                        if (fresh) onUpdate(fresh);
+                    }
+                } catch (e) {}
+            };
+        } catch (e) {}
+    };
+    connectWs();
     
-    if (serverUrl) {
-        const wsUrl = serverUrl.replace(/^http/, 'ws');
-        const connectWs = () => {
-            try {
-                ws = new WebSocket(wsUrl);
-                ws.onopen = () => ws?.send(JSON.stringify({ type: 'JOIN', familyId: currentFamilyId }));
-                ws.onmessage = async (event) => {
-                    try {
-                        const msg = JSON.parse(event.data);
-                        if (msg.type === 'UPDATE' && msg.familyId === currentFamilyId) {
-                            const fresh = await getStoredSession(currentFamilyId, currentKey);
-                            if (fresh) onUpdate(fresh);
-                        }
-                    } catch (e) {}
-                };
-            } catch (e) {
-                console.warn("WebSocket connection failed, sync might be degraded.");
-            }
-        };
-        connectWs();
-    }
     return () => {
         localSyncChannel.removeEventListener('message', localHandler);
         if (ws) ws.close();
