@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { FamilyMember, Restaurant, FamilySession } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { FamilyMember, Restaurant, FamilySession, Coordinates } from '../types';
 import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2 } from 'lucide-react';
 import { getInviteCode } from '../services/storage';
 import { searchPlace } from '../services/ai';
@@ -49,6 +49,7 @@ const TagSection = ({ label, tags, tempValue, setTempValue, onAdd, onRemove, col
               className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all pr-12"
           />
           <button 
+              type="button"
               onClick={(e) => { e.preventDefault(); onAdd(); }}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-orange-500 transition-colors"
           >
@@ -65,6 +66,28 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [location, setLocation] = useState<Coordinates | null>(null);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch location for favorite searching
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+        (err) => console.warn("Geo error in manager", err)
+      );
+    }
+  }, []);
+
+  // Handle focus for the name field only when the editor first appears
+  useEffect(() => {
+    if ((isAdding || editingId) && nameInputRef.current) {
+        // Slight delay to ensure animation doesn't fight focus
+        const timer = setTimeout(() => nameInputRef.current?.focus(), 100);
+        return () => clearTimeout(timer);
+    }
+  }, [isAdding, !!editingId]);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -147,7 +170,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       if (!tempFavoriteQuery.trim()) return;
       setIsSearchingFavorites(true);
       try {
-          const results = await searchPlace(tempFavoriteQuery, null);
+          const results = await searchPlace(tempFavoriteQuery, location);
           setFavSearchResults(results);
       } catch (e) {
           console.error(e);
@@ -254,6 +277,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
               <AnimatePresence mode="popLayout">
                 {(isAdding || editingId) && (
                     <motion.div 
+                        key="member-editor"
                         initial={{ opacity: 0, y: 20 }} 
                         animate={{ opacity: 1, y: 0 }} 
                         exit={{ opacity: 0, scale: 0.95 }} 
@@ -266,7 +290,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
 
                         <div>
                             <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1">First Name</label>
-                            <input autoFocus value={formName} onChange={e => setFormName(e.target.value)} className="w-full text-2xl font-black border-b-2 border-gray-100 focus:border-orange-500 outline-none py-2 transition-all" placeholder="e.g. Leo" />
+                            <input ref={nameInputRef} value={formName} onChange={e => setFormName(e.target.value)} className="w-full text-2xl font-black border-b-2 border-gray-100 focus:border-orange-500 outline-none py-2 transition-all" placeholder="e.g. Leo" />
                         </div>
 
                         <TagSection 
@@ -335,6 +359,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                         className="flex-1 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all"
                                     />
                                     <button 
+                                        type="button"
                                         onClick={(e) => { e.preventDefault(); searchForFavorites(); }}
                                         disabled={isSearchingFavorites}
                                         className="bg-gray-100 p-3 rounded-xl text-gray-500 hover:bg-orange-50 hover:text-orange-500 transition-all disabled:opacity-50"
@@ -346,6 +371,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                 <AnimatePresence>
                                     {favSearchResults.length > 0 && (
                                         <motion.div 
+                                            key="favorite-search-results"
                                             initial={{ opacity: 0, y: -10 }} 
                                             animate={{ opacity: 1, y: 0 }} 
                                             exit={{ opacity: 0 }}
@@ -353,6 +379,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                         >
                                             {favSearchResults.map((res, i) => (
                                                 <button 
+                                                    type="button"
                                                     key={i} 
                                                     onClick={() => addFavorite(res)}
                                                     className="w-full p-4 text-left hover:bg-orange-50 flex items-center justify-between border-b border-gray-50 last:border-0"

@@ -8,6 +8,20 @@ import { saveSession, subscribeToSync, logout, loadLastSession } from './service
 import { LogOut, CloudSun, Sparkles, ArrowRight, Signal, Wifi, Battery } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Status Bar Component for the "Phone" look moved outside to prevent remounts
+const StatusBar = () => (
+    <div className="flex justify-between items-center px-6 py-3 text-xs font-bold text-gray-900 select-none sticky top-0 bg-white/90 backdrop-blur-sm z-50">
+        <div className="flex items-center gap-1">
+            <span>9:41</span>
+        </div>
+        <div className="flex items-center gap-2">
+            <Signal size={14} className="fill-gray-900" />
+            <Wifi size={14} />
+            <Battery size={16} className="fill-gray-900"/>
+        </div>
+    </div>
+);
+
 const App: React.FC = () => {
   const [session, setSession] = useState<FamilySession | null>(null);
   const [isDecisionActive, setIsDecisionActive] = useState(false);
@@ -51,20 +65,6 @@ const App: React.FC = () => {
       setSession(null);
       setIsDecisionActive(false);
   };
-
-  // Status Bar Component for the "Phone" look
-  const StatusBar = () => (
-      <div className="flex justify-between items-center px-6 py-3 text-xs font-bold text-gray-900 select-none sticky top-0 bg-white/90 backdrop-blur-sm z-50">
-          <div className="flex items-center gap-1">
-              <span>9:41</span>
-          </div>
-          <div className="flex items-center gap-2">
-              <Signal size={14} className="fill-gray-900" />
-              <Wifi size={14} />
-              <Battery size={16} className="fill-gray-900"/>
-          </div>
-      </div>
-  );
 
   if (isInitializing) {
       return (
