@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { FamilyMember, Restaurant, FamilySession, Coordinates } from '../types';
-import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2, Navigation } from 'lucide-react';
+import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2, Navigation, Search, Globe } from 'lucide-react';
 import { getInviteCode } from '../services/storage';
 import { searchPlace } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -66,13 +66,17 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Location States
   const [location, setLocation] = useState<Coordinates | null>(null);
-  const [locStatus, setLocStatus] = useState<'detecting' | 'found' | 'denied' | 'timeout'>('detecting');
+  const [manualLocation, setManualLocation] = useState('');
+  const [isSettingManual, setIsSettingManual] = useState(false);
+  const [locStatus, setLocStatus] = useState<'detecting' | 'found' | 'denied' | 'timeout' | 'manual'>('detecting');
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // Robust location fetching
-  const refreshLocation = () => {
+  // Improved location fetching with fallback
+  const refreshLocation = (highAccuracy = true) => {
     if (!navigator.geolocation) {
         setLocStatus('denied');
         return;
@@ -83,14 +87,24 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       (position) => {
         setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
         setLocStatus('found');
+        setManualLocation(''); // Clear manual if auto-finds
       },
       (err) => {
-        console.warn("Geo error in manager", err);
-        if (err.code === 1) setLocStatus('denied');
-        else if (err.code === 3) setLocStatus('timeout');
-        else setLocStatus('denied');
+        console.warn(`Geo error (Accuracy: ${highAccuracy})`, err);
+        // If high accuracy timed out or failed, try one more time with coarse location
+        if (highAccuracy) {
+            refreshLocation(false);
+        } else {
+            if (err.code === 1) setLocStatus('denied');
+            else if (err.code === 3) setLocStatus('timeout');
+            else setLocStatus('denied');
+        }
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      { 
+          enableHighAccuracy: highAccuracy, 
+          timeout: highAccuracy ? 5000 : 10000, 
+          maximumAge: 60000 
+      }
     );
   };
 
@@ -186,8 +200,14 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const searchForFavorites = async () => {
       if (!tempFavoriteQuery.trim()) return;
       setIsSearchingFavorites(true);
+      
+      // If we have a manual location, append it to the query to force the Maps API to look there
+      const finalQuery = (manualLocation && locStatus === 'manual') 
+          ? `${tempFavoriteQuery} in ${manualLocation}` 
+          : tempFavoriteQuery;
+
       try {
-          const results = await searchPlace(tempFavoriteQuery, location);
+          const results = await searchPlace(finalQuery, location);
           setFavSearchResults(results);
       } catch (e) {
           console.error(e);
@@ -224,6 +244,15 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
           setError("Failed to connect to sync server.");
       } finally {
           setIsGenerating(false);
+      }
+  };
+
+  const handleManualLocationSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (manualLocation.trim()) {
+          setLocStatus('manual');
+          setLocation(null); // Clear coordinates to favor text query
+          setIsSettingManual(false);
       }
   };
 
@@ -367,23 +396,52 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                             </div>
 
                             <div className="relative">
-                                {/* Location Status Badge */}
-                                <div className="flex justify-end mb-2">
-                                    <button 
-                                        type="button"
-                                        onClick={refreshLocation}
-                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${
-                                            locStatus === 'found' ? 'bg-green-50 text-green-600' :
-                                            locStatus === 'detecting' ? 'bg-orange-50 text-orange-500 animate-pulse' :
-                                            'bg-red-50 text-red-500'
-                                        }`}
-                                    >
-                                        <Navigation size={10} className={locStatus === 'detecting' ? 'animate-spin' : ''} />
-                                        {locStatus === 'found' ? 'Nearby Search Active' : 
-                                         locStatus === 'detecting' ? 'Finding You...' : 
-                                         locStatus === 'timeout' ? 'Location Timeout (Using IP)' :
-                                         'Location Blocked (Using IP)'}
-                                    </button>
+                                {/* Location Status Badge with Manual Entry Support */}
+                                <div className="flex flex-col gap-2 mb-2">
+                                    <div className="flex justify-between items-center">
+                                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location Search Context</label>
+                                         <button 
+                                            type="button"
+                                            onClick={() => locStatus === 'manual' ? refreshLocation() : setIsSettingManual(!isSettingManual)}
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${
+                                                locStatus === 'found' ? 'bg-green-50 text-green-600' :
+                                                locStatus === 'detecting' ? 'bg-orange-50 text-orange-500 animate-pulse' :
+                                                locStatus === 'manual' ? 'bg-blue-50 text-blue-600' :
+                                                'bg-red-50 text-red-500'
+                                            }`}
+                                        >
+                                            {locStatus === 'found' ? <Navigation size={10} /> : 
+                                             locStatus === 'manual' ? <Globe size={10} /> : 
+                                             <AlertCircle size={10} />}
+                                            {locStatus === 'found' ? 'Detected Nearby' : 
+                                             locStatus === 'detecting' ? 'Finding You...' : 
+                                             locStatus === 'manual' ? `In ${manualLocation}` :
+                                             'Using Server IP (NL)'}
+                                            {(locStatus === 'denied' || locStatus === 'timeout' || locStatus === 'found') && <span className="underline ml-1">Change</span>}
+                                            {locStatus === 'manual' && <span className="underline ml-1">Reset</span>}
+                                        </button>
+                                    </div>
+
+                                    <AnimatePresence>
+                                        {isSettingManual && (
+                                            <motion.form 
+                                                initial={{ height: 0, opacity: 0 }} 
+                                                animate={{ height: 'auto', opacity: 1 }} 
+                                                exit={{ height: 0, opacity: 0 }}
+                                                onSubmit={handleManualLocationSubmit}
+                                                className="overflow-hidden bg-gray-50 rounded-xl p-3 border-2 border-gray-100 flex gap-2"
+                                            >
+                                                <input 
+                                                    autoFocus
+                                                    value={manualLocation}
+                                                    onChange={e => setManualLocation(e.target.value)}
+                                                    placeholder="Enter City or Zip (e.g. Austin, TX)"
+                                                    className="flex-1 bg-white border-none text-xs font-bold p-2 outline-none rounded-lg shadow-sm"
+                                                />
+                                                <button type="submit" className="bg-gray-900 text-white px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest">Set</button>
+                                            </motion.form>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
 
                                 <div className="flex gap-2">
@@ -391,7 +449,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                         value={tempFavoriteQuery} 
                                         onChange={e => setTempFavoriteQuery(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), searchForFavorites())}
-                                        placeholder={locStatus !== 'found' ? "Try 'Pizza in London'..." : "Search restaurant name..."}
+                                        placeholder={locStatus === 'found' ? "Search restaurant name..." : "e.g. Joe's Pizza..."}
                                         className="flex-1 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all"
                                     />
                                     <button 
@@ -400,7 +458,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                         disabled={isSearchingFavorites}
                                         className="bg-gray-100 p-3 rounded-xl text-gray-500 hover:bg-orange-50 hover:text-orange-500 transition-all disabled:opacity-50"
                                     >
-                                        {isSearchingFavorites ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
+                                        {isSearchingFavorites ? <Loader2 size={20} className="animate-spin" /> : <Search size={20} />}
                                     </button>
                                 </div>
                                 
