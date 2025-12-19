@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { FamilyMember, Restaurant, FamilySession, Coordinates } from '../types';
-import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2, Navigation, Search, Globe } from 'lucide-react';
+import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2, Navigation, Search, Globe, Map as MapIcon } from 'lucide-react';
 import { getInviteCode } from '../services/storage';
 import { searchPlace } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -79,6 +79,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const refreshLocation = (highAccuracy = true) => {
     if (!navigator.geolocation) {
         setLocStatus('denied');
+        setIsSettingManual(true);
         return;
     }
     
@@ -87,22 +88,24 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       (position) => {
         setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
         setLocStatus('found');
-        setManualLocation(''); // Clear manual if auto-finds
+        setManualLocation(''); 
+        setIsSettingManual(false);
       },
       (err) => {
         console.warn(`Geo error (Accuracy: ${highAccuracy})`, err);
-        // If high accuracy timed out or failed, try one more time with coarse location
         if (highAccuracy) {
             refreshLocation(false);
         } else {
             if (err.code === 1) setLocStatus('denied');
             else if (err.code === 3) setLocStatus('timeout');
             else setLocStatus('denied');
+            // If we are on desktop, usually failure means we need manual input
+            setIsSettingManual(true);
         }
       },
       { 
           enableHighAccuracy: highAccuracy, 
-          timeout: highAccuracy ? 5000 : 10000, 
+          timeout: highAccuracy ? 5000 : 8000, 
           maximumAge: 60000 
       }
     );
@@ -111,14 +114,6 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   useEffect(() => {
     refreshLocation();
   }, []);
-
-  // Handle focus for the name field only when the editor first appears
-  useEffect(() => {
-    if ((isAdding || editingId) && nameInputRef.current) {
-        const timer = setTimeout(() => nameInputRef.current?.focus(), 100);
-        return () => clearTimeout(timer);
-    }
-  }, [isAdding, !!editingId]);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -201,7 +196,6 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       if (!tempFavoriteQuery.trim()) return;
       setIsSearchingFavorites(true);
       
-      // If we have a manual location, append it to the query to force the Maps API to look there
       const finalQuery = (manualLocation && locStatus === 'manual') 
           ? `${tempFavoriteQuery} in ${manualLocation}` 
           : tempFavoriteQuery;
@@ -251,7 +245,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       e.preventDefault();
       if (manualLocation.trim()) {
           setLocStatus('manual');
-          setLocation(null); // Clear coordinates to favor text query
+          setLocation(null); 
           setIsSettingManual(false);
       }
   };
@@ -396,31 +390,55 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                             </div>
 
                             <div className="relative">
-                                {/* Location Status Badge with Manual Entry Support */}
-                                <div className="flex flex-col gap-2 mb-2">
-                                    <div className="flex justify-between items-center">
-                                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location Search Context</label>
-                                         <button 
-                                            type="button"
-                                            onClick={() => locStatus === 'manual' ? refreshLocation() : setIsSettingManual(!isSettingManual)}
-                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${
-                                                locStatus === 'found' ? 'bg-green-50 text-green-600' :
-                                                locStatus === 'detecting' ? 'bg-orange-50 text-orange-500 animate-pulse' :
-                                                locStatus === 'manual' ? 'bg-blue-50 text-blue-600' :
-                                                'bg-red-50 text-red-500'
-                                            }`}
+                                {/* Enhanced Location Section */}
+                                <div className="space-y-3 mb-4 pt-2 border-t border-gray-50">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location Context</label>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setIsSettingManual(!isSettingManual)}
+                                            className="text-[10px] font-black text-orange-600 uppercase tracking-widest hover:underline"
                                         >
-                                            {locStatus === 'found' ? <Navigation size={10} /> : 
-                                             locStatus === 'manual' ? <Globe size={10} /> : 
-                                             <AlertCircle size={10} />}
-                                            {locStatus === 'found' ? 'Detected Nearby' : 
-                                             locStatus === 'detecting' ? 'Finding You...' : 
-                                             locStatus === 'manual' ? `In ${manualLocation}` :
-                                             'Using Server IP (NL)'}
-                                            {(locStatus === 'denied' || locStatus === 'timeout' || locStatus === 'found') && <span className="underline ml-1">Change</span>}
-                                            {locStatus === 'manual' && <span className="underline ml-1">Reset</span>}
+                                            {locStatus === 'manual' ? 'Change' : 'Set Manual'}
                                         </button>
                                     </div>
+
+                                    {/* Warning for Netherlands/IP fallback */}
+                                    {(locStatus === 'denied' || locStatus === 'timeout' || (locStatus === 'detecting' && !location)) && (
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: -5 }} 
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="bg-orange-50 border border-orange-100 p-3 rounded-xl flex items-start gap-3"
+                                        >
+                                            <AlertCircle size={16} className="text-orange-500 mt-0.5 shrink-0" />
+                                            <div>
+                                                <p className="text-[10px] font-bold text-orange-800 leading-tight">
+                                                    We can't find your location. 
+                                                    Search results might default to the Netherlands.
+                                                </p>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setIsSettingManual(true)}
+                                                    className="text-[10px] font-black text-orange-600 uppercase tracking-widest mt-1 underline"
+                                                >
+                                                    Set your City/Zip code now
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    {/* Success/Manual Status */}
+                                    {(locStatus === 'found' || locStatus === 'manual') && (
+                                        <div className={`px-3 py-2 rounded-xl flex items-center justify-between ${locStatus === 'found' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                                            <div className="flex items-center gap-2">
+                                                {locStatus === 'found' ? <Navigation size={12} /> : <Globe size={12} />}
+                                                <span className="text-[10px] font-black uppercase tracking-widest">
+                                                    {locStatus === 'found' ? 'Auto-Detected Nearby' : `Searching in ${manualLocation}`}
+                                                </span>
+                                            </div>
+                                            <button onClick={() => locStatus === 'manual' ? refreshLocation() : setIsSettingManual(true)} className="text-[10px] font-black underline opacity-60">Reset</button>
+                                        </div>
+                                    )}
 
                                     <AnimatePresence>
                                         {isSettingManual && (
@@ -435,10 +453,10 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                                     autoFocus
                                                     value={manualLocation}
                                                     onChange={e => setManualLocation(e.target.value)}
-                                                    placeholder="Enter City or Zip (e.g. Austin, TX)"
+                                                    placeholder="City or Zip (e.g. Austin, TX)"
                                                     className="flex-1 bg-white border-none text-xs font-bold p-2 outline-none rounded-lg shadow-sm"
                                                 />
-                                                <button type="submit" className="bg-gray-900 text-white px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest">Set</button>
+                                                <button type="submit" className="bg-gray-900 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest">Set</button>
                                             </motion.form>
                                         )}
                                     </AnimatePresence>
@@ -449,7 +467,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                         value={tempFavoriteQuery} 
                                         onChange={e => setTempFavoriteQuery(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), searchForFavorites())}
-                                        placeholder={locStatus === 'found' ? "Search restaurant name..." : "e.g. Joe's Pizza..."}
+                                        placeholder="Restaurant Name..."
                                         className="flex-1 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all"
                                     />
                                     <button 
