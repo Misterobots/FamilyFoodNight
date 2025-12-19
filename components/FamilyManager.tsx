@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { FamilyMember, Restaurant, FamilySession, Coordinates } from '../types';
-import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2 } from 'lucide-react';
+import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2, Navigation } from 'lucide-react';
 import { getInviteCode } from '../services/storage';
 import { searchPlace } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -67,23 +67,40 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [location, setLocation] = useState<Coordinates | null>(null);
+  const [locStatus, setLocStatus] = useState<'detecting' | 'found' | 'denied' | 'timeout'>('detecting');
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch location for favorite searching
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
-        (err) => console.warn("Geo error in manager", err)
-      );
+  // Robust location fetching
+  const refreshLocation = () => {
+    if (!navigator.geolocation) {
+        setLocStatus('denied');
+        return;
     }
+    
+    setLocStatus('detecting');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+        setLocStatus('found');
+      },
+      (err) => {
+        console.warn("Geo error in manager", err);
+        if (err.code === 1) setLocStatus('denied');
+        else if (err.code === 3) setLocStatus('timeout');
+        else setLocStatus('denied');
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  };
+
+  useEffect(() => {
+    refreshLocation();
   }, []);
 
   // Handle focus for the name field only when the editor first appears
   useEffect(() => {
     if ((isAdding || editingId) && nameInputRef.current) {
-        // Slight delay to ensure animation doesn't fight focus
         const timer = setTimeout(() => nameInputRef.current?.focus(), 100);
         return () => clearTimeout(timer);
     }
@@ -350,12 +367,31 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                             </div>
 
                             <div className="relative">
+                                {/* Location Status Badge */}
+                                <div className="flex justify-end mb-2">
+                                    <button 
+                                        type="button"
+                                        onClick={refreshLocation}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${
+                                            locStatus === 'found' ? 'bg-green-50 text-green-600' :
+                                            locStatus === 'detecting' ? 'bg-orange-50 text-orange-500 animate-pulse' :
+                                            'bg-red-50 text-red-500'
+                                        }`}
+                                    >
+                                        <Navigation size={10} className={locStatus === 'detecting' ? 'animate-spin' : ''} />
+                                        {locStatus === 'found' ? 'Nearby Search Active' : 
+                                         locStatus === 'detecting' ? 'Finding You...' : 
+                                         locStatus === 'timeout' ? 'Location Timeout (Using IP)' :
+                                         'Location Blocked (Using IP)'}
+                                    </button>
+                                </div>
+
                                 <div className="flex gap-2">
                                     <input 
                                         value={tempFavoriteQuery} 
                                         onChange={e => setTempFavoriteQuery(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), searchForFavorites())}
-                                        placeholder="Search restaurant to add..."
+                                        placeholder={locStatus !== 'found' ? "Try 'Pizza in London'..." : "Search restaurant name..."}
                                         className="flex-1 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all"
                                     />
                                     <button 

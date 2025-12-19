@@ -123,11 +123,18 @@ app.get('/api/invite/:code', (req, res) => {
 app.post('/api/places/search', async (req, res) => {
     if (!GOOGLE_API_KEY) return res.status(500).json({ error: "Server configuration error" });
     const { query, latitude, longitude, limit, minRating } = req.body;
+    
     try {
         const requestBody = { textQuery: query, maxResultCount: limit || 5 };
+        
+        // Use a slightly larger radius (15km) to be more forgiving for desktop Wi-Fi geolocation
         if (latitude && longitude) {
-            requestBody.locationBias = { circle: { center: { latitude, longitude }, radius: 5000.0 } };
+            console.log(`Searching with location bias: ${latitude}, ${longitude}`);
+            requestBody.locationBias = { circle: { center: { latitude, longitude }, radius: 15000.0 } };
+        } else {
+            console.log(`Searching without client location. Falling back to IP-based location (likely Server/Netherlands).`);
         }
+
         if (minRating) requestBody.minRating = minRating;
 
         const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
@@ -142,6 +149,7 @@ app.post('/api/places/search', async (req, res) => {
         const data = await response.json();
         res.json(data.places || []);
     } catch (error) {
+        console.error("Maps Proxy Error:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
