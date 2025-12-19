@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import { FamilyMember, Restaurant, FamilySession } from '../types';
-import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus } from 'lucide-react';
+import { Share2, Copy, Check, Smartphone, UserPlus, Users, Edit2, Loader2, Sparkles, AlertCircle, RefreshCw, X, Plus, Heart, MapPin, Trash2 } from 'lucide-react';
 import { getInviteCode } from '../services/storage';
+import { searchPlace } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FamilyManagerProps {
@@ -21,6 +23,41 @@ const AVATAR_COLORS = [
   'bg-cyan-100 text-cyan-600',
 ];
 
+const TagSection = ({ label, tags, tempValue, setTempValue, onAdd, onRemove, colorClass, placeholder }: any) => (
+  <div className="space-y-2">
+      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{label}</label>
+      <div className="flex flex-wrap gap-2 mb-2 min-h-[32px]">
+          {tags.length === 0 && <span className="text-xs text-gray-300 italic py-1 px-1">None added yet</span>}
+          {tags.map((tag: string) => (
+              <motion.span 
+                  initial={{ scale: 0.8, opacity: 0 }} 
+                  animate={{ scale: 1, opacity: 1 }}
+                  key={tag} 
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${colorClass}`}
+              >
+                  {tag}
+                  <button onClick={() => onRemove(tag)} className="hover:text-black transition-colors"><X size={12}/></button>
+              </motion.span>
+          ))}
+      </div>
+      <div className="relative">
+          <input 
+              value={tempValue} 
+              onChange={e => setTempValue(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), onAdd())}
+              placeholder={placeholder}
+              className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all pr-12"
+          />
+          <button 
+              onClick={(e) => { e.preventDefault(); onAdd(); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-orange-500 transition-colors"
+          >
+              <Plus size={20} />
+          </button>
+      </div>
+  </div>
+);
+
 export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMembers, familyId, familyKey, fullSession }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -34,15 +71,20 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
   const [formDietary, setFormDietary] = useState<string[]>([]);
   const [formCuisines, setFormCuisines] = useState<string[]>([]);
   const [formFlavors, setFormFlavors] = useState<string[]>([]);
+  const [formFavorites, setFormFavorites] = useState<Restaurant[]>([]);
   
   // Tag Inputs
   const [tempDietary, setTempDietary] = useState('');
   const [tempCuisine, setTempCuisine] = useState('');
   const [tempFlavor, setTempFlavor] = useState('');
+  const [tempFavoriteQuery, setTempFavoriteQuery] = useState('');
+  const [isSearchingFavorites, setIsSearchingFavorites] = useState(false);
+  const [favSearchResults, setFavSearchResults] = useState<Restaurant[]>([]);
 
   const resetForm = () => {
-    setFormName(''); setFormDietary([]); setFormCuisines([]); setFormFlavors([]);
-    setTempDietary(''); setTempCuisine(''); setTempFlavor('');
+    setFormName(''); setFormDietary([]); setFormCuisines([]); setFormFlavors([]); setFormFavorites([]);
+    setTempDietary(''); setTempCuisine(''); setTempFlavor(''); setTempFavoriteQuery('');
+    setFavSearchResults([]);
     setIsAdding(false); setEditingId(null);
   };
 
@@ -53,6 +95,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
     setFormDietary(member.dietaryRestrictions || []);
     setFormCuisines(member.cuisinePreferences || []); 
     setFormFlavors(member.flavorPreferences || []);
+    setFormFavorites(member.favorites || []);
     setEditingId(member.id); 
     setIsAdding(false);
   };
@@ -64,7 +107,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
       dietaryRestrictions: formDietary, 
       cuisinePreferences: formCuisines, 
       flavorPreferences: formFlavors, 
-      favorites: [] 
+      favorites: formFavorites 
     };
 
     if (editingId) {
@@ -100,6 +143,31 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
     if (type === 'flavor') setFormFlavors(formFlavors.filter(t => t !== tag));
   };
 
+  const searchForFavorites = async () => {
+      if (!tempFavoriteQuery.trim()) return;
+      setIsSearchingFavorites(true);
+      try {
+          const results = await searchPlace(tempFavoriteQuery, null);
+          setFavSearchResults(results);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setIsSearchingFavorites(false);
+      }
+  };
+
+  const addFavorite = (place: Restaurant) => {
+      if (!formFavorites.some(f => f.name === place.name)) {
+          setFormFavorites([...formFavorites, { ...place, source: 'favorite' }]);
+      }
+      setFavSearchResults([]);
+      setTempFavoriteQuery('');
+  };
+
+  const removeFavorite = (name: string) => {
+      setFormFavorites(formFavorites.filter(f => f.name !== name));
+  };
+
   const handleInviteCode = async () => {
       setIsGenerating(true);
       setError(null);
@@ -118,41 +186,6 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
           setIsGenerating(false);
       }
   };
-
-  const TagSection = ({ label, tags, tempValue, setTempValue, onAdd, onRemove, colorClass, placeholder }: any) => (
-    <div className="space-y-2">
-        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{label}</label>
-        <div className="flex flex-wrap gap-2 mb-2 min-h-[32px]">
-            {tags.length === 0 && <span className="text-xs text-gray-300 italic py-1 px-1">None added yet</span>}
-            {tags.map((tag: string) => (
-                <motion.span 
-                    initial={{ scale: 0.8, opacity: 0 }} 
-                    animate={{ scale: 1, opacity: 1 }}
-                    key={tag} 
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${colorClass}`}
-                >
-                    {tag}
-                    <button onClick={() => onRemove(tag)} className="hover:text-black transition-colors"><X size={12}/></button>
-                </motion.span>
-            ))}
-        </div>
-        <div className="relative">
-            <input 
-                value={tempValue} 
-                onChange={e => setTempValue(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), onAdd())}
-                placeholder={placeholder}
-                className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all pr-12"
-            />
-            <button 
-                onClick={(e) => { e.preventDefault(); onAdd(); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-orange-500 transition-colors"
-            >
-                <Plus size={20} />
-            </button>
-        </div>
-    </div>
-  );
 
   return (
     <div className="space-y-8">
@@ -224,7 +257,7 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                         initial={{ opacity: 0, y: 20 }} 
                         animate={{ opacity: 1, y: 0 }} 
                         exit={{ opacity: 0, scale: 0.95 }} 
-                        className="p-6 rounded-[2.5rem] shadow-2xl border-2 border-orange-500 bg-white space-y-6 z-30"
+                        className="p-6 rounded-[2.5rem] shadow-2xl border-2 border-orange-500 bg-white space-y-6 z-30 mb-8"
                     >
                         <div className="flex justify-between items-center">
                             <h3 className="text-xl font-black text-gray-900">{editingId ? 'Edit Profile' : 'New Profile'}</h3>
@@ -269,6 +302,74 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                             placeholder="e.g. Spicy, Extra Cheesy..."
                         />
 
+                        {/* Favorites Section */}
+                        <div className="space-y-4 pt-4 border-t-2 border-gray-50">
+                            <div className="flex items-center justify-between">
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Favorite Spots (10/10)</label>
+                                <Heart size={14} className="text-rose-400" fill="currentColor" />
+                            </div>
+                            
+                            <div className="space-y-2">
+                                {formFavorites.map((fav) => (
+                                    <div key={fav.name} className="flex items-center justify-between p-3 bg-rose-50 rounded-xl border border-rose-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-white p-2 rounded-lg text-rose-500"><MapPin size={14} /></div>
+                                            <div>
+                                                <div className="text-sm font-bold text-gray-900 leading-tight">{fav.name}</div>
+                                                <div className="text-[10px] font-medium text-rose-400 uppercase tracking-wider">{fav.cuisine}</div>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => removeFavorite(fav.name)} className="text-rose-300 hover:text-rose-500"><Trash2 size={16}/></button>
+                                    </div>
+                                ))}
+                                {formFavorites.length === 0 && <p className="text-xs text-gray-300 italic text-center py-2">No favorites added yet</p>}
+                            </div>
+
+                            <div className="relative">
+                                <div className="flex gap-2">
+                                    <input 
+                                        value={tempFavoriteQuery} 
+                                        onChange={e => setTempFavoriteQuery(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), searchForFavorites())}
+                                        placeholder="Search restaurant to add..."
+                                        className="flex-1 bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm focus:border-orange-200 outline-none transition-all"
+                                    />
+                                    <button 
+                                        onClick={(e) => { e.preventDefault(); searchForFavorites(); }}
+                                        disabled={isSearchingFavorites}
+                                        className="bg-gray-100 p-3 rounded-xl text-gray-500 hover:bg-orange-50 hover:text-orange-500 transition-all disabled:opacity-50"
+                                    >
+                                        {isSearchingFavorites ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
+                                    </button>
+                                </div>
+                                
+                                <AnimatePresence>
+                                    {favSearchResults.length > 0 && (
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: -10 }} 
+                                            animate={{ opacity: 1, y: 0 }} 
+                                            exit={{ opacity: 0 }}
+                                            className="absolute left-0 right-0 mt-2 bg-white border-2 border-gray-100 rounded-2xl shadow-xl z-50 max-h-60 overflow-y-auto no-scrollbar"
+                                        >
+                                            {favSearchResults.map((res, i) => (
+                                                <button 
+                                                    key={i} 
+                                                    onClick={() => addFavorite(res)}
+                                                    className="w-full p-4 text-left hover:bg-orange-50 flex items-center justify-between border-b border-gray-50 last:border-0"
+                                                >
+                                                    <div>
+                                                        <div className="font-bold text-gray-900">{res.name}</div>
+                                                        <div className="text-xs text-gray-400">{res.address}</div>
+                                                    </div>
+                                                    <Plus size={16} className="text-orange-400"/>
+                                                </button>
+                                            ))}
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+
                         <div className="flex gap-3 pt-4">
                             <button onClick={saveMember} className="flex-1 bg-gray-900 text-white py-4 rounded-2xl font-bold text-sm hover:bg-black transition-colors shadow-lg">Save Changes</button>
                         </div>
@@ -291,8 +392,8 @@ export const FamilyManager: React.FC<FamilyManagerProps> = ({ members, setMember
                                 </h3>
                                 <div className="flex flex-wrap gap-1 mt-1">
                                     {member.dietaryRestrictions?.length > 0 && <span className="text-[9px] font-bold text-red-500 uppercase tracking-tighter">Dietary Needs</span>}
-                                    {member.cuisinePreferences?.slice(0, 2).map(t => <span key={t} className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">{t}</span>)}
-                                    {((member.cuisinePreferences?.length || 0) > 2) && <span className="text-[9px] font-bold text-gray-300">+{ (member.cuisinePreferences?.length || 0) - 2 } more</span>}
+                                    {member.favorites?.length > 0 && <span className="text-[9px] font-bold text-rose-500 uppercase tracking-tighter flex items-center gap-0.5"><Heart size={8} fill="currentColor"/> {member.favorites.length} Favs</span>}
+                                    {member.cuisinePreferences?.slice(0, 1).map(t => <span key={t} className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">{t}</span>)}
                                 </div>
                             </div>
                         </div>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { FamilyMember, DiningMode, VoteOption, Coordinates, Restaurant } from '../types';
 import { getCuisineConsensus, findBestPlace, getRouletteOptions } from '../services/ai';
-import { Utensils, ShoppingBag, CheckCircle, Loader2, MapPin, Star, ArrowRight, ArrowLeft, Sparkles, PartyPopper, X } from 'lucide-react';
+import { Utensils, ShoppingBag, CheckCircle, Loader2, MapPin, Star, ArrowRight, ArrowLeft, Sparkles, PartyPopper, X, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Roulette } from './Roulette';
 
@@ -91,7 +91,7 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
               }
               setVoteOptions(prev => prev.map(opt => opt.id === choiceId ? { ...opt, votes: opt.votes + 1 } : opt));
               setSimulatedVotesCast(prev => new Set(prev).add(member.id));
-          }, 3000 + (index * 2500));
+          }, 2000 + (index * 1500));
       });
   };
 
@@ -104,7 +104,7 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
     const regularVotes = voteOptions.filter(o => !o.isDontCare).reduce((acc, curr) => acc + curr.votes, 0);
     const dontCareVotes = dontCareOption ? dontCareOption.votes : 0;
 
-    if (dontCareVotes > regularVotes) {
+    if (dontCareVotes > regularVotes && regularVotes === 0) {
         startRoulette();
         return;
     }
@@ -127,7 +127,8 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
   const startRoulette = async () => {
       setStep('roulette-prep');
       try {
-          const places = await getRouletteOptions(location);
+          const activeMembers = members.filter(m => selectedMemberIds.has(m.id));
+          const places = await getRouletteOptions(location, activeMembers);
           if (places.length === 0) throw new Error("No places found");
           setRouletteOptions(places);
           setStep('roulette');
@@ -193,7 +194,7 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                                 >
                                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${m.avatarColor} font-bold text-lg shadow-sm`}>{m.name.charAt(0)}</div>
                                     <span className="font-bold text-lg text-gray-800">{m.name}</span>
-                                    {selectedMemberIds.has(m.id) && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}><CheckCircle className="ml-auto text-orange-500 fill-orange-100" size={24} /></motion.div>}
+                                    {selectedMemberIds.has(m.id) && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="ml-auto"><CheckCircle className="text-orange-500 fill-orange-100" size={24} /></motion.div>}
                                 </motion.button>
                             ))}
                         </div>
@@ -281,6 +282,13 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                             {voteOptions.map((opt) => {
                                  const totalVotes = voteOptions.reduce((acc, curr) => acc + curr.votes, 0);
                                  const percent = totalVotes > 0 ? (opt.votes / totalVotes) * 100 : 0;
+                                 
+                                 // Check if this matches a favorite
+                                 const matchesFav = members
+                                    .filter(m => selectedMemberIds.has(m.id))
+                                    .flatMap(m => m.favorites)
+                                    .some(f => f.cuisine.toLowerCase().includes(opt.cuisine.toLowerCase()) || opt.cuisine.toLowerCase().includes(f.cuisine.toLowerCase()));
+
                                  return (
                                     <motion.button 
                                         layout
@@ -291,8 +299,15 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                                     >
                                         <div className={`absolute left-0 top-0 bottom-0 transition-all duration-700 opacity-20 ${opt.isDontCare ? 'bg-gray-400' : 'bg-orange-500'}`} style={{ width: `${percent}%` }}></div>
                                         <div className="relative z-10 p-5 flex justify-between items-center">
-                                            <div>
-                                                <h3 className="font-bold text-lg text-gray-800 leading-tight">{opt.cuisine}</h3>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="font-bold text-lg text-gray-800 leading-tight">{opt.cuisine}</h3>
+                                                    {matchesFav && (
+                                                        <span className="bg-rose-100 text-rose-600 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-widest flex items-center gap-0.5">
+                                                            <Heart size={8} fill="currentColor"/> Fav Match
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mt-1">{opt.reasoning}</p>
                                             </div>
                                             {opt.votes > 0 && (
@@ -328,15 +343,19 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                                 initial={{ scale: 0, rotate: -10 }} 
                                 animate={{ scale: 1, rotate: 0 }} 
                                 transition={{ type: "spring" }}
-                                className="inline-block bg-green-100 text-green-700 px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest mb-4 shadow-sm"
+                                className={`inline-block px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest mb-4 shadow-sm ${result.recommended.source === 'favorite' ? 'bg-rose-100 text-rose-700' : 'bg-green-100 text-green-700'}`}
                              >
-                                <PartyPopper size={14} className="inline mr-1 mb-0.5"/> Winner
+                                {result.recommended.source === 'favorite' ? (
+                                    <><Heart size={14} className="inline mr-1 mb-0.5" fill="currentColor"/> A Family Favorite</>
+                                ) : (
+                                    <><PartyPopper size={14} className="inline mr-1 mb-0.5"/> Winner</>
+                                )}
                              </motion.div>
                              <h2 className="text-4xl font-heading font-black text-gray-900 mb-2 leading-none">{result.recommended.name}</h2>
                              <div className="flex items-center justify-center gap-2 text-sm font-bold text-gray-400 uppercase tracking-wide">
                                  <span>{result.recommended.cuisine}</span>
                                  <span>•</span>
-                                 <span className="flex items-center gap-1 text-orange-500"><Star size={14} fill="currentColor"/> {result.recommended.rating}</span>
+                                 <span className="flex items-center gap-1 text-orange-500"><Star size={14} fill="currentColor"/> {result.recommended.rating || "N/A"}</span>
                              </div>
                         </div>
 
@@ -350,23 +369,26 @@ export const DecisionFlow: React.FC<DecisionFlowProps> = ({ members, onCancel })
                            </div>
                         ) : (
                             <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100 mb-6 relative group transform transition-all hover:scale-[1.02]">
-                                 <div className="h-40 bg-gray-900 relative overflow-hidden">
+                                 <div className={`h-40 relative overflow-hidden ${result.recommended.source === 'favorite' ? 'bg-rose-900' : 'bg-gray-900'}`}>
                                       <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
                                       <div className="absolute bottom-6 left-6 text-white">
                                           <div className="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-1">Recommended By</div>
-                                          <div className="font-bold flex items-center gap-2 text-orange-300"><Sparkles size={16}/> AI Consensus</div>
+                                          <div className={`font-bold flex items-center gap-2 ${result.recommended.source === 'favorite' ? 'text-rose-300' : 'text-orange-300'}`}>
+                                            {result.recommended.source === 'favorite' ? <Heart size={16} fill="currentColor"/> : <Sparkles size={16}/>} 
+                                            {result.recommended.source === 'favorite' ? 'Your Saved List' : 'AI Consensus'}
+                                          </div>
                                       </div>
                                  </div>
                                  <div className="p-6">
                                       <div className="flex items-start gap-4 mb-6">
-                                          <div className="bg-orange-50 p-3 rounded-2xl text-orange-600"><MapPin size={24} /></div>
+                                          <div className={`p-3 rounded-2xl ${result.recommended.source === 'favorite' ? 'bg-rose-50 text-rose-600' : 'bg-orange-50 text-orange-600'}`}><MapPin size={24} /></div>
                                           <div>
-                                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Address</div>
+                                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Location</div>
                                               <div className="font-medium text-lg text-gray-800 leading-snug">{result.recommended.address || "Check maps"}</div>
                                           </div>
                                       </div>
-                                      <a href={result.recommended.googleMapsUri} target="_blank" rel="noreferrer" className="block w-full bg-gray-900 text-white text-center py-4 rounded-2xl font-bold text-lg hover:bg-black transition-all shadow-xl">
+                                      <a href={result.recommended.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(result.recommended.name)}`} target="_blank" rel="noreferrer" className="block w-full bg-gray-900 text-white text-center py-4 rounded-2xl font-bold text-lg hover:bg-black transition-all shadow-xl">
                                           Open in Maps
                                       </a>
                                  </div>
